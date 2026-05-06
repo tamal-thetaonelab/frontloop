@@ -1,0 +1,14 @@
+{
+  "name": "ui-tools",
+  "description": "UI-focused skills for Claude Code — live browser inspection, element-level edits applied directly to source files, and more.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Tamal Das",
+    "url": "https://github.com/thetaonelab"
+  },
+  "homepage": "https://github.com/thetaonelab/frontloop",
+  "repository": "https://github.com/thetaonelab/frontloop.git",
+  "license": "MIT",
+  "keywords": ["frontend", "browser-agent", "live-reload", "react", "nextjs", "claude-code"],
+  "skills": "skills"
+}

@@ -1,3 +1,8 @@
 .DS_Store
-skills/frontend-mock-setup
-skills/using-mock-setup
+
+# unpublished plugins
+plugins/frontend-mock-setup
+plugins/using-mock-setup
+
+# root skills dir (canonical copies live inside plugins/)
+skills/
