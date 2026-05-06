@@ -4,29 +4,40 @@
 
 ---
 <div align="center">
-Frontloop gives your coding agent browser-native capabilities it does not have
-out of the box. It comprises of a set of skills ( starting with live-ui-generation ) 
-that turn your agent into a true pair programmer for frontend development.
+Frontloop is a Claude Code plugin marketplace for frontend development.<br/>
+It ships skills that give your coding agent browser-native capabilities it does not have out of the box.
 </div>
 
 ---
-
-
-
 
 ![demo](./fl-gif.gif)
 
 ---
 
-## Skills
+## Install
 
-### `/frontloop:live-ui-generation`
+Add the marketplace and install the plugin:
+
+```
+/plugin marketplace add tamal-thetaonelab/frontloop
+/plugin install ui-tools@frontloop
+```
+
+---
+
+## Plugins
+
+### `ui-tools`
+
+UI-focused skills for Claude Code. Currently ships one skill:
+
+#### `/ui-tools:live-ui-generation`
 
 Turns your browser into a feedback surface for your coding agent.
 
 Click any element on your running app. Describe the change. Claude Code receives
-the full DOM context -- selector, outer HTML, computed styles, card context, and
-page URL -- edits the source file, and hot reload delivers the result. An orange
+the full DOM context — selector, outer HTML, computed styles, card context, and
+page URL — edits the source file, and hot reload delivers the result. An orange
 shimmer appears on the selected element while the agent works and clears on
 completion.
 
@@ -54,22 +65,6 @@ Not a CSS override. An actual source edit with full codebase context.
 
 ---
 
-## Install
-
-```
-/plugin install github:tamal-thetaonelab/frontloop
-```
-
-Or install from the Claude Code plugin manager directly.
-
-Once installed, start your dev server and run inside a Claude Code session:
-
-```
-/frontloop:live-ui-generation
-```
-
----
-
 ## Requirements
 
 - Claude Code
@@ -81,10 +76,9 @@ Once installed, start your dev server and run inside a Claude Code session:
 
 ## Roadmap
 
-The following skills and platform expansions are planned. Each item ships as
-its own skill -- the plugin stays modular, nothing is bundled unless you want it.
+Each item ships as its own plugin — the marketplace stays modular, nothing is bundled unless you want it.
 
-1. ### `/frontloop:mock-setup`
+### `mock-setup` plugin *(in development)*
 
 A complete mock backend layer using Mock Service Worker.
 
@@ -96,30 +90,21 @@ requests or console errors.
 Run your frontend entirely offline. Demo it to clients without a real backend.
 Develop new features before the API exists.
 
-Status: `in development`.
-
 ---
 
-2. ### Agent support beyond Claude Code
+### Agent support beyond Claude Code
 
-live-ui-generation currently works with Claude Code. The browser-to-agent
-feedback loop is not Claude-specific -- any coding agent that can read from a
+`live-ui-generation` currently works with Claude Code. The browser-to-agent
+feedback loop is not Claude-specific — any coding agent that can read from a
 WebSocket endpoint can consume the task payload.
 
-Planned support:
+Planned support: Cursor, GitHub Copilot Workspace, Gemini CLI, Windsurf.
 
-- Cursor (background agent mode)
-- GitHub Copilot Workspace
-- Gemini CLI
-- Codeium / Windsurf
-
-The WebSocket server and DOM inspector are agent-agnostic by design. Expanding
-coverage is a matter of writing the agent-side adapter for each tool. PRs for
-specific agents are welcome.
+The WebSocket server and DOM inspector are agent-agnostic by design. PRs for specific agents are welcome.
 
 ---
 
-3. ### UI platform support
+### UI platform support
 
 Current framework support is React (CRA) and Next.js. Planned additions:
 
@@ -128,13 +113,11 @@ Current framework support is React (CRA) and Next.js. Planned additions:
 - Angular
 - React Native web (Expo)
 
-Provider injection and HMR triggering differ per framework. 
-
 ---
 
 ## What this is not
 
-- Not active in production. The skill and server are development-only.
+- Not active in production. Skills and servers are development-only.
 - Not a cloud service. Everything runs on localhost.
 - Not a no-code tool. The agent writes real source code against your real codebase.
 - Not a CSS inspector. Changes persist in source files, not in browser overrides.
@@ -143,7 +126,7 @@ Provider injection and HMR triggering differ per framework.
 
 ## Contributing
 
-New skills welcome. Fixiing bugs, improving docs, and expanding agent support are all great ways to contribute.
+New plugins and skills welcome. Fixing bugs, improving docs, and expanding agent support are all great ways to contribute.
 
 ---
 
@@ -152,4 +135,4 @@ New skills welcome. Fixiing bugs, improving docs, and expanding agent support ar
 MIT
 
 ---
-Built with ❤️ by Tamal Sen ( A bengali coder turned entrepreneur ).
+Built with ❤️ by [Tamal Sen](https://github.com/tamal-thetaonelab).

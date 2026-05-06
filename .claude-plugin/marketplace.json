@@ -3,7 +3,7 @@
   "name": "frontloop",
   "description": "Frontend development plugins for Claude Code — live UI generation and more.",
   "owner": {
-    "name": "Tamal Das",
+    "name": "Tamal Sen",
     "email": "tamal@eyezon.in"
   },
   "plugins": [
@@ -13,7 +13,7 @@
       "description": "UI-focused skills for Claude Code — live browser inspection, element-level edits applied directly to source files, and more.",
       "version": "1.0.0",
       "author": {
-        "name": "Tamal Das"
+        "name": "Tamal Sen"
       },
       "homepage": "https://github.com/tamal-thetaonelab/frontloop",
       "repository": "https://github.com/tamal-thetaonelab/frontloop.git",
