@@ -20,7 +20,7 @@ Add the marketplace and install the plugin:
 
 ```
 /plugin marketplace add tamal-thetaonelab/frontloop
-/plugin install frontloop@frontloop
+/plugin install frontloop@fl-plugins
 ```
 
 ---
@@ -70,8 +70,8 @@ Not a CSS override. An actual source edit with full codebase context.
 To get the latest plugins after the marketplace has been updated:
 
 ```
-/plugin marketplace update frontloop
-/plugin update frontloop@frontloop
+/plugin marketplace update fl-plugins
+/plugin update frontloop@fl-plugins
 ```
 
 ---

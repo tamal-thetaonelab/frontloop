@@ -1,6 +1,6 @@
 {
   "$schema": "https://claude.ai/schemas/marketplace.json",
-  "name": "frontloop",
+  "name": "fl-plugins",
   "description": "Frontend development plugins for Claude Code — live UI generation and more.",
   "owner": {
     "name": "Tamal Sen",
