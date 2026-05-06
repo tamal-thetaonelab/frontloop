@@ -8,7 +8,7 @@
   },
   "plugins": [
     {
-      "name": "ui-tools",
+      "name": "frontloop",
       "source": "./plugins/ui-tools",
       "description": "UI-focused skills for Claude Code — live browser inspection, element-level edits applied directly to source files, and more.",
       "version": "1.0.0",

@@ -20,18 +20,18 @@ Add the marketplace and install the plugin:
 
 ```
 /plugin marketplace add tamal-thetaonelab/frontloop
-/plugin install ui-tools@frontloop
+/plugin install frontloop@frontloop
 ```
 
 ---
 
 ## Plugins
 
-### `ui-tools`
+### `frontloop`
 
 UI-focused skills for Claude Code. Currently ships one skill:
 
-#### `/ui-tools:live-ui-generation`
+#### `/frontloop:live-ui-generation`
 
 Turns your browser into a feedback surface for your coding agent.
 
@@ -71,7 +71,7 @@ To get the latest plugins after the marketplace has been updated:
 
 ```
 /plugin marketplace update frontloop
-/plugin update ui-tools@frontloop
+/plugin update frontloop@frontloop
 ```
 
 ---

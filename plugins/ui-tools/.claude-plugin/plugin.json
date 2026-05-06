@@ -1,5 +1,5 @@
 {
-  "name": "ui-tools",
+  "name": "frontloop",
   "description": "UI-focused skills for Claude Code — live browser inspection, element-level edits applied directly to source files, and more.",
   "version": "1.0.0",
   "author": {
