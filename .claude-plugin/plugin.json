@@ -1,13 +1,4 @@
 {
-  "$schema": "https://claude.ai/schemas/marketplace.json",
-  "name": "frontloop-dev",
-  "description": "Frontend development plugins for Claude Code — live UI generation and more.",
-  "owner": {
-    "name": "Tamal Sen",
-    "email": "tamal@eyezon.in"
-  },
-  "plugins": [
-    {
       "name": "frontloop",
       "source": "./",
       "description": "UI-focused skills for Claude Code — live browser inspection, element-level edits applied directly to source files, and more.",
@@ -21,5 +12,3 @@
       "category": "frontend",
       "tags": ["browser-agent", "live-reload", "react", "nextjs", "ui"]
     }
-  ]
-}
