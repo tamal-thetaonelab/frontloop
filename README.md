@@ -65,6 +65,17 @@ Not a CSS override. An actual source edit with full codebase context.
 
 ---
 
+## Update
+
+To get the latest plugins after the marketplace has been updated:
+
+```
+/plugin marketplace update frontloop
+/plugin update ui-tools@frontloop
+```
+
+---
+
 ## Requirements
 
 - Claude Code

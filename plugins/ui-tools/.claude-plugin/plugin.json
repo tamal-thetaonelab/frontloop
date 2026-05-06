@@ -9,6 +9,5 @@
   "homepage": "https://github.com/tamal-thetaonelab/frontloop",
   "repository": "https://github.com/tamal-thetaonelab/frontloop.git",
   "license": "MIT",
-  "keywords": ["frontend", "browser-agent", "live-reload", "react", "nextjs", "claude-code"],
-  "skills": "skills"
+  "keywords": ["frontend", "browser-agent", "live-reload", "react", "nextjs", "claude-code"]
 }
