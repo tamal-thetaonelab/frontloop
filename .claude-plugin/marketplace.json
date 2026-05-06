@@ -15,8 +15,8 @@
       "author": {
         "name": "Tamal Das"
       },
-      "homepage": "https://github.com/thetaonelab/frontloop",
-      "repository": "https://github.com/thetaonelab/frontloop.git",
+      "homepage": "https://github.com/tamal-thetaonelab/frontloop",
+      "repository": "https://github.com/tamal-thetaonelab/frontloop.git",
       "license": "MIT",
       "category": "frontend",
       "tags": ["browser-agent", "live-reload", "react", "nextjs", "ui"]
