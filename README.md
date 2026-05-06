@@ -5,7 +5,7 @@
 ---
 <div align="center">
 Frontloop is a Claude Code plugin marketplace for frontend development.<br/>
-It ships skills that give your coding agent browser-native capabilities it does not have out of the box.
+It ships skills that close the loop between your browser and your coding agent.
 </div>
 
 ---
@@ -16,63 +16,65 @@ It ships skills that give your coding agent browser-native capabilities it does 
 
 ## Install
 
-Add the marketplace and install the plugin:
-
+### Claude Code
 ```
 /plugin marketplace add tamal-thetaonelab/frontloop
-/plugin install frontloop@frontloop-dev
+/plugin install frontloop
 ```
 
 ---
 
-## Plugins
+## Skills
 
-### `frontloop`
+### `/live-ui-generation`
 
-UI-focused skills for Claude Code. Currently ships one skill:
+Click any element on your running app. Describe the change. Claude Code receives the full DOM context — selector, outer HTML, computed styles, container context, and page URL — edits the source file directly, and hot reload delivers the result.
 
-#### `/frontloop:live-ui-generation`
-
-Turns your browser into a feedback surface for your coding agent.
-
-Click any element on your running app. Describe the change. Claude Code receives
-the full DOM context — selector, outer HTML, computed styles, card context, and
-page URL — edits the source file, and hot reload delivers the result. An orange
-shimmer appears on the selected element while the agent works and clears on
-completion.
-
-The intended setup is your browser and Claude Code terminal side by side. UI on
-the left, agent output on the right. No terminal input required after the initial
-command.
+An orange shimmer appears over the selected element while Claude works and clears on completion.
 
 ![side-by-side](./side-by-side.png)
-![side-by-side](./demo.png)
+![demo](./demo.png)
 
-What the agent receives per request:
+What Claude receives per task:
 
 ```json
 {
-  "selector": "#employee-card > div.header",
-  "outerHTML": "<div class=\"header\">...</div>",
-  "computedStyles": { "background": "rgb(255,255,255)", "padding": "16px" },
-  "cardContext": "Employee list row, inside a table layout",
-  "pageURL": "http://localhost:4300/app/employee",
-  "task": "make this card background light grey and increase padding to 24px"
+  "id": "a3f9bc12",
+  "type": "dom-fix",
+  "prompt": "make this card background light grey and increase padding to 24px",
+  "element": {
+    "selector": "#employee-card > div.header",
+    "tag": "div",
+    "html": "<div class=\"header\">...</div>",
+    "styles": { "background": "rgb(255,255,255)", "padding": "16px" }
+  },
+  "container": { "title": "Employee Card", "dataKeys": ["Name", "Role"] },
+  "page": "http://localhost:4300/app/employee"
 }
 ```
 
-Not a CSS override. An actual source edit with full codebase context.
+Not a CSS override. A real source edit with full codebase context.
+
+**How it works:**
+
+- A floating button (FAB) appears in your browser in dev mode
+- Click it, select an element, type your fix — a shimmer appears
+- A WebSocket server streams the task payload to Claude as a real-time notification
+- Claude edits the source file, runs a type check, then sends a completion signal
+- Shimmer clears, HMR delivers the change
+
+**Framework support:** React (CRA), Next.js (App Router)
 
 ---
 
 ## Update
 
-To get the latest plugins after the marketplace has been updated:
+### Claude Code
+```
+/plugin marketplace update frontloop
+```
+( set auto-update to true for automatic updates )
 
-```
-/plugin marketplace update frontloop-dev
-/plugin update frontloop@frontloop-dev
-```
 
 ---
 
@@ -87,57 +89,42 @@ To get the latest plugins after the marketplace has been updated:
 
 ## Roadmap
 
-Each item ships as its own plugin — the marketplace stays modular, nothing is bundled unless you want it.
+Each item ships as its own plugin — nothing is bundled unless you want it.
 
-### `mock-setup` plugin *(in development)*
+### `mock-setup` *(in development)*
 
-A complete mock backend layer using Mock Service Worker.
+A complete mock backend layer using Mock Service Worker. The agent reads your existing API calls, generates stateful MSW handlers, wires up working auth without touching production code, and verifies every route renders correctly.
 
-The agent reads your existing API calls, generates stateful MSW handlers that
-mirror your real API responses, wires up working auth without touching your
-production code, and verifies every route renders correctly with no unhandled
-requests or console errors.
-
-Run your frontend entirely offline. Demo it to clients without a real backend.
-Develop new features before the API exists.
+Run your frontend entirely offline. Demo without a real backend. Build features before the API exists.
 
 ---
 
 ### Agent support beyond Claude Code
 
-`live-ui-generation` currently works with Claude Code. The browser-to-agent
-feedback loop is not Claude-specific — any coding agent that can read from a
-WebSocket endpoint can consume the task payload.
+`live-ui-generation` works with Claude Code today. The WebSocket server and DOM inspector are agent-agnostic — any coding agent that can read from a WebSocket endpoint can consume the task payload.
 
-Planned support: Cursor, GitHub Copilot Workspace, Gemini CLI, Windsurf.
-
-The WebSocket server and DOM inspector are agent-agnostic by design. PRs for specific agents are welcome.
+Planned: Cursor, GitHub Copilot Workspace, Gemini CLI, Windsurf.
 
 ---
 
 ### UI platform support
 
-Current framework support is React (CRA) and Next.js. Planned additions:
-
-- Vue 3 (Vite and Nuxt)
-- Svelte / SvelteKit
-- Angular
-- React Native web (Expo)
+Planned additions: Vue 3 / Nuxt, Svelte / SvelteKit, Angular, React Native web (Expo).
 
 ---
 
 ## What this is not
 
-- Not active in production. Skills and servers are development-only.
-- Not a cloud service. Everything runs on localhost.
-- Not a no-code tool. The agent writes real source code against your real codebase.
-- Not a CSS inspector. Changes persist in source files, not in browser overrides.
+- Not active in production — dev mode only
+- Not a cloud service — everything runs on localhost
+- Not a no-code tool — Claude writes real source code against your real codebase
+- Not a CSS inspector — changes persist in source files, not browser overrides
 
 ---
 
 ## Contributing
 
-New plugins and skills welcome. Fixing bugs, improving docs, and expanding agent support are all great ways to contribute.
+New plugins and skills welcome. Fixing bugs, improving docs, and expanding agent or framework support are all great ways to contribute.
 
 ---
 

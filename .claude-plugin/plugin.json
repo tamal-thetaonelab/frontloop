@@ -1,14 +1,13 @@
 {
-      "name": "frontloop",
-      "source": "./",
-      "description": "UI-focused skills for Claude Code — live browser inspection, element-level edits applied directly to source files, and more.",
-      "version": "1.0.0",
-      "author": {
-        "name": "Tamal Sen"
-      },
-      "homepage": "https://github.com/tamal-thetaonelab/frontloop",
-      "repository": "https://github.com/tamal-thetaonelab/frontloop.git",
-      "license": "MIT",
-      "category": "frontend",
-      "tags": ["browser-agent", "live-reload", "react", "nextjs", "ui"]
-    }
+  "name": "frontloop",
+  "description": "Claude Code skills for frontend development — inspect DOM elements in the browser, describe a change, and get it applied live to source files with hot reload.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Tamal Sen",
+    "url": "https://github.com/tamal-thetaonelab"
+  },
+  "homepage": "https://github.com/tamal-thetaonelab/frontloop",
+  "repository": "https://github.com/tamal-thetaonelab/frontloop.git",
+  "license": "MIT",
+  "keywords": ["frontend", "dom-inspector", "hot-reload", "websocket", "react", "nextjs", "claude-code"]
+}
