@@ -184,17 +184,28 @@ Check for `<frontend>/src/mocks/dom-inspector.ts`. If missing, create it. It mus
 - `DOMInspector` class:
   - `init()` — creates FAB and starts reload listener
   - `connectReloadListener()` — persistent WS to `ws://localhost:7332`; calls `window.location.reload()` on `RELOAD` message; auto-reconnects after 3 s on unexpected disconnect
-  - `activate()` / `deactivate()` — crosshair cursor, hover highlight overlay, click capture
-  - `showPanel(ctx, element)` — fixed panel with element selector label, textarea, **Cancel button** (restores FAB, no task sent), **Send Fix Task button**, and **Escape key handler** (same as Cancel)
+  - `activate()` / `deactivate()` — crosshair cursor, hover highlight overlay, click capture. FAB turns emerald green with pulse animation (`__outpost_fab_active` class) instead of being hidden.
+  - `showPanel(ctx, element)` — fixed panel with element selector label, textarea, **Cancel button** (calls `deactivate()`: restores FAB, hides highlight, no task sent), **Send Fix Task button**, and **Escape key handler** (same as Cancel). The orange highlight rectangle stays visible over the captured element while the panel is open.
+  - `onClick` handler — does NOT call `deactivate()`. Instead manually removes event listeners, keeps the FAB hidden, and pins the highlight at the captured element's bounding rect so it stays visible during panel input. If a `<th>` (table header) was clicked, calls `highlightTableColumn()` to show full-column highlight and `enrichContainerWithColumn()` to populate the container context with all cell values from that column.
+  - `enrichContainerWithColumn(th, ctx)` — when a `<th>` is clicked, collects the text content of every cell in that column across all rows and populates `ctx.container.text` (pipe-joined), `ctx.container.dataKeys` (cell texts array), `ctx.container.description` ("table column"), and `ctx.container.title` (column header text).
   - `dispatchFixTask(ctx, prompt, element)` — generates 8-char alphanumeric `id`, hides FAB, applies shimmer, opens WS, sends `{type:"TASK", payload}`, listens for `COMPLETE:<id>`, restores FAB on completion. 180 s fallback timeout.
   - `applyShimmer(el)` — **MUST use `position:fixed` overlay appended to `document.body`**, positioned via `el.getBoundingClientRect()`. Do NOT `appendChild` to the target element — SVG nodes (`rect`, `path`, `circle`, etc.) silently reject HTML children.
   - `enrichContext(el)` — walks up the DOM (max 10 levels) to find a card-like ancestor; extracts `title`, `value`, `description`, `dataKeys` from its children
+  - `onHover` handler — highlights elements on hover. When hovering over a `<th>` (table header), calls `highlightTableColumn(th)` which calculates the combined bounding rect of all cells at that column index across all rows (`thead`/`tbody`/`tfoot`), highlighting the entire column.
   - `findSelector(el)` — inline CSS selector generator (no external deps), prefers `#id`, falls back to tag + class + `:nth-of-type`
 - Shimmer CSS injected via `<style>` appended to `document.head` at module load time
 - FAB: orange circle `⋞`, `position:fixed`, bottom-right, 36 px, `z-index:2147483645`
+- FAB has three visual states:
+  - **Idle** — orange (#F97316) background, idle
+  - **Active selection** — emerald green (#059669) with pulsing ring animation (`__outpost_fab_active` class)
+  - **Panel open** — FAB hidden (the panel UI replaces it)
 - FAB is hidden while shimmer is active; restored only on task completion or fallback timeout
 
 The reference implementation lives at `<frontend>/src/mocks/dom-inspector.ts` in the esg-demo-next repo.
+
+#### Key method implementations — reference file
+
+Full TypeScript implementations for the column highlighting, highlight persistence, FAB state transitions, and enriched column payload are in **[reference/dom-inspector-methods.md](reference/dom-inspector-methods.md)**. Read that file when modifying `dom-inspector.ts`, not during initial setup.
 
 ### Step 5 — Verify LiveUIProvider.tsx
 
@@ -233,55 +244,13 @@ import LiveUIProvider from '@/lib/LiveUIProvider'
 <LiveUIProvider>{children}</LiveUIProvider>
 ```
 
-If a `MockProvider` exists, wrap it outside:
-
-```tsx
-<MockProvider><LiveUIProvider>{children}</LiveUIProvider></MockProvider>
-```
-
----
-
-**CRA / CRACO**
-
-No `'use client'` directive (not a Next.js concept). No `@/` alias — use a relative import or the project's configured alias (`~/` for CRACO projects that set it up). No SSR, so no `next/dynamic` needed.
-
-```tsx
-import { useEffect } from 'react'
-
-export default function LiveUIProvider({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    if (process.env.NODE_ENV !== 'development') return
-    async function init() {
-      try {
-        // Use relative path — CRA does not support the @/ alias
-        const { setupDomInspector } = await import('../mocks/dom-inspector')
-        setupDomInspector()
-      } catch (e) {
-        console.warn('[LiveUI] dom-inspector init failed:', e)
-      }
-    }
-    init()
-  }, [])
-
-  return <>{children}</>
-}
-```
-
-Wire in `<frontend>/src/app/App.tsx` (or wherever the root component renders the Router), wrapping the Router's children — **not** a layout file, which doesn't exist in CRA:
-
-```tsx
-import LiveUIProvider from '../lib/LiveUIProvider'
-
-// Inside render / return, wrapping route children:
-<Router>
-  <LiveUIProvider>
-    <Route path="/" component={LandingPageApp} />
-    {/* ... other routes */}
-  </LiveUIProvider>
-</Router>
-```
-
-If the project uses a class component for App, wrap inside the `render()` return the same way.
+**CRA / CRACO differences from Next.js:**
+- No `'use client'` directive
+- Import from `'../mocks/dom-inspector'` (no `@/` alias)
+- Import from `'../lib/LiveUIProvider'` (relative path)
+- Wire in `App.tsx` (not a layout file), wrapping `<Router>` children
+- No SSR concern, so plain import suffices (no `next/dynamic`)
+- Same component code otherwise
 
 ### Step 6 — User starts dev server
 
@@ -301,9 +270,9 @@ Tell them the FAB (⋞) will appear at bottom-right once the dev server is runni
 
 ### Phase A — User captures an element
 
-1. User clicks the orange FAB (⋞) — cursor becomes crosshair, elements highlight with orange border on hover
-2. User clicks the target element — highlight disappears, a panel appears with the element's selector and a textarea
-3. User types a fix description and presses Enter / clicks "Send Fix Task" — or clicks "Cancel" / presses Escape to dismiss with no task sent
+1. User clicks the orange FAB (⋞) — FAB turns emerald green with pulse, cursor becomes crosshair, elements highlight with orange border on hover
+2. User clicks the target element — crosshair mode ends, FAB is hidden, but the orange highlight rectangle **stays visible** over the selected element. A panel appears with the element's selector and a textarea.
+3. User types a fix description and presses Enter / clicks "Send Fix Task" — or clicks "Cancel" / presses Escape to dismiss (highlight and FAB restore to idle state) with no task sent
 4. If confirmed: panel closes, orange shimmer appears over the selected element, browser sends `TASK` over WebSocket to `ws://localhost:7332`
 
 ### Phase B — TASK notification arrives
@@ -462,45 +431,17 @@ Changes MUST:
 
 When the user asks for mock data to populate an empty card or page:
 
-### 1. Check which mock pattern the project uses
-
-- **Fetch interceptor (`MockProvider.tsx`):** look for a `window.fetch` patch in `src/mocks/MockProvider.tsx`. This is the preferred pattern for Next.js App Router projects that have SSR issues with MSW. Add a new key to `mockData` and a new `if` branch in the interceptor for the relevant URL.
-- **MSW (`src/mocks/handlers/`):** if `node_modules/msw` exists and handlers are already present, add a new handler there instead.
-
-### 2. Identify the exact endpoint
-
-Use `page` and `container.title` from the payload to locate the page source file. Read it to find the `fetch()` call that feeds the target card. Do not guess the URL — read the actual source.
-
-### 3. Add mock data for that endpoint only
-
-Add mock data only for the API endpoint that feeds the card the user pointed at. Do not mock unrelated routes.
-
-### 4. HMR compatibility (fetch interceptor)
-
-The `MockProvider` pattern uses `useRef` to expose `mockData` to the interceptor closure, so HMR picks up data changes without a full reload:
+1. **Identify mock pattern** — fetch interceptor (`MockProvider.tsx` patches `window.fetch`) or MSW handlers (`src/mocks/handlers/`). Prefer fetch interceptor for Next.js (avoids SSR issues with MSW).
+2. **Find the endpoint** — read the page source file to find the exact `fetch()` URL. Do not guess.
+3. **Add one handler** — mock only the endpoint feeding the targeted card.
+4. **HMR compatibility** — the interceptor must read from a `useRef` to avoid stale closures:
 
 ```tsx
 const dataRef = useRef(mockData)
-dataRef.current = mockData  // updated every render
-
-// interceptor reads from dataRef.current, not from the stale closure
+dataRef.current = mockData
 ```
 
-If this pattern is already in place, a hot reload handles data edits. If HMR still doesn't reflect changes, send `POST /reload` after the completion curl.
-
-### 5. Wire MockProvider in layout (if not yet present)
-
-**Next.js** — use `next/dynamic` with `{ ssr: false }` to prevent SSR interference:
-
-```tsx
-import dynamic from 'next/dynamic'
-const MockProvider = dynamic(() => import('@/mocks/MockProvider'), { ssr: false })
-
-// in layout body:
-<MockProvider><LiveUIProvider>{children}</LiveUIProvider></MockProvider>
-```
-
-**CRA** — no SSR, so a plain import in `App.tsx` suffices:
+5. **Wire MockProvider** (`next/dynamic` with `{ ssr: false }` for Next.js; plain import for CRA), wrapping outside LiveUIProvider in the layout/App.
 
 ```tsx
 import MockProvider from '../mocks/MockProvider'
