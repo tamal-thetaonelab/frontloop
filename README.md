@@ -74,11 +74,11 @@ Not a CSS override. A real source edit with full codebase context.
 - Loader clears, HMR delivers the change. If HMR can potentially not work, a reload signal is sent instead.
 
 **Framework support:** 
-✅ React
-✅ Next.js
-✅ Angular
-🚧 Vue 3 / Nuxt
-🚧 Svelte / SvelteKit
+- ✅ React
+- ✅ Next.js
+- ✅ Angular
+- 🚧 Vue 3 / Nuxt
+- 🚧 Svelte / SvelteKit
 ---
 
 ## Update
