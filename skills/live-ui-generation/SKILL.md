@@ -7,7 +7,10 @@ description: Use when the user wants live UI generation — click-to-inspect an 
 
 ## Overview
 
-Closes the loop between browser and Claude: the user clicks a floating button (FAB), selects a DOM element, types a fix description, an orange shimmer animation appears over the selected element, and a TASK notification arrives in the shell where the WS server is running. Claude reads the payload, applies the change, and POSTs a completion signal to remove the shimmer.
+Closes the loop between browser and Claude via two modes:
+
+- **Element inspect (orange ⋞ FAB):** Select a DOM element, describe a code fix, orange shimmer appears, TASK payload arrives in the shell. Claude applies the change and POSTs completion to remove shimmer.
+- **Screenshot capture (indigo [] button):** Click-drag to select a page region, describe what to fix, region captured as PNG saved to disk. TASK payload includes `screenshotPath` — Claude reads the image alongside the element context.
 
 ```
 Browser ──WS──▶ ws-task-server (stdout) ──▶ Claude reads TASK, applies change
@@ -15,518 +18,162 @@ Browser ──WS──▶ ws-task-server (stdout) ──▶ Claude reads TASK, a
   └──────────── HTTP POST /complete/<id> ◀────────────────┘
 ```
 
-No MSW dependency. The DOM inspector activates in dev mode only (`NODE_ENV=development`).
+Safety: Inspector activates only when `NODE_ENV=development`.
 
 ## Architecture
 
-Three lightweight pieces, all scoped to dev mode:
-
 | Component | File | Role |
 |-----------|------|------|
-| WS + HTTP server | `<repo-root>/ws-task-server.js` | WebSocket on 7332, HTTP completion + reload on 7333 |
-| DOM Inspector | `<frontend>/src/mocks/dom-inspector.ts` | FAB, hover highlight, click-to-capture, shimmer overlay, WS dispatch |
-| Provider wiring | `<frontend>/src/lib/LiveUIProvider.tsx` | Dynamically imports `setupDomInspector()` in dev mode |
+| WS + HTTP server | `<repo-root>/ws-task-server.js` | WS 7332, HTTP completion + reload + screenshot on 7333 |
+| DOM Inspector | `<frontend>/src/mocks/dom-inspector.ts` | FAB, screenshot button, hover highlight, canvas capture, shimmer overlay, WS dispatch |
+| Provider wiring | `<frontend>/src/lib/LiveUIProvider.tsx` | Imports `setupDomInspector()` in dev mode |
 
-**Safety:** The inspector only activates when `NODE_ENV=development`. The FAB never appears in production builds.
+Resolve placeholders before setup:
+- **`<repo-root>`** — `git rev-parse --show-toplevel` or dir with `.git/` + `package.json`
+- **`<frontend>`** — dir with `src/` + `package.json` containing `"next"` (Next.js) or `"react-scripts"`/`"@craco/craco"` (CRA)
 
-## Resolving Placeholders
+## Monitoring
 
-Before any setup step, resolve the two path placeholders used throughout this document:
-
-- **`<repo-root>`** — the directory containing `.git/` and the top-level `package.json`. Find it by running `git rev-parse --show-toplevel` from anywhere inside the project, or by locating the directory that has both `.git/` and `package.json`.
-- **`<frontend>`** — the directory that contains `src/` and a `package.json` with a React-based framework. Detect the framework type at the same time:
-
-| Condition | Framework |
-|-----------|-----------|
-| `package.json` has `"next"` in dependencies | **Next.js** (App Router) |
-| `package.json` has `"react-scripts"` or `"@craco/craco"` | **CRA / CRACO** |
-
-Steps below include framework-specific notes where behaviour differs. If the framework cannot be determined, read `package.json` before proceeding.
-
-## What Is the Monitor Tool
-
-The **Monitor tool** is a Claude Code built-in that spawns a persistent background process and streams each stdout line as a real-time notification — Claude is woken up the moment a line arrives, with no polling and no blocking of the main session.
-
-`ws-task-server.js` uses `console.log` to emit TASK payloads. When the server runs under Monitor and the browser submits a task, the line:
-
-```
-TASK: {"id":"1lqp7tln","type":"dom-fix","prompt":"...","element":{...},"page":"http://..."}
-```
-
-arrives as a notification that Claude reads immediately and acts on. This is the only supported way to run the server — **do not use bash**, which is ephemeral and cannot host a persistent WebSocket server.
+The **Monitor tool** spawns a persistent background process. `ws-task-server.js` emits `console.log` lines like `TASK: {...}` — each line arrives as a real-time notification. **Do not use bash** (ephemeral, can't host persistent WS). See [reference/server-code.md](reference/server-code.md) for the full server template.
 
 ## Setup
 
-**Important:** Claude handles steps 1–5 (infrastructure setup), but **step 6 (dev server) must be started by the user.** Never start the dev server yourself.
+Claude handles steps 1–5. **Step 6 (dev server) must be started by the user.**
 
 ### Step 1 — Resolve repo paths
+`<repo-root>` and `<frontend>` (rules above).
 
-Identify `<repo-root>` and `<frontend>` using the rules above. Confirm they exist before proceeding.
+### Step 2 — ws-task-server.js
+Create `<repo-root>/ws-task-server.js` from [reference/server-code.md](reference/server-code.md). The `ws` module is a transitive dependency in `<frontend>/node_modules/ws` — do not install separately.
 
-### Step 2 — Verify ws-task-server.js
-
-Check for `<repo-root>/ws-task-server.js`. If missing, create it:
-
-```js
-// Live UI Generation — WS (7332) + HTTP completion (7333)
-const http = require('http');
-// ws v8+ exports WebSocketServer; v7 exports Server — support both
-const wsModule = require('ws');
-const WebSocketServer = wsModule.WebSocketServer || wsModule.Server;
-
-const WS_PORT = 7332;
-const HTTP_PORT = 7333;
-
-const connections = new Map(); // taskId → ws
-const monitors = new Set();    // monitor connections (no task id)
-
-// Strip verbose fields (HTML blobs) that cause notification truncation.
-// Keeps id, type, prompt, element.tag, element.componentHierarchy,
-// element.text, container.title, pageTitle, page.
-function slimPayload(data) {
-  const slim = { id: data.id, type: data.type, prompt: data.prompt };
-  if (data.element) {
-    slim.element = {};
-    for (const k of ['selector','tag','text','componentHierarchy']) {
-      if (data.element[k]) slim.element[k] = data.element[k];
-    }
-  }
-  if (data.container && data.container.title) {
-    slim.container = { title: data.container.title };
-  }
-  if (data.pageTitle) slim.pageTitle = data.pageTitle;
-  if (data.page) slim.page = data.page;
-  return slim;
-}
-
-const wss = new WebSocketServer({ port: WS_PORT });
-wss.on('connection', (ws) => {
-  monitors.add(ws);
-
-  ws.on('message', (raw) => {
-    const str = raw.toString();
-    let payload;
-
-    // Format A (Next.js dom-inspector): JSON envelope { type: 'TASK', payload: {...} }
-    // Format B (CRA dom-inspector):     prefixed string  "TASK: {...}"
-    try {
-      const envelope = JSON.parse(str);
-      if (envelope.type === 'TASK' && envelope.payload?.id) {
-        payload = envelope.payload;
-      }
-    } catch { /* not Format A — try Format B */ }
-
-    if (!payload && str.startsWith('TASK: ')) {
-      try { payload = JSON.parse(str.slice('TASK: '.length)); } catch { return; }
-    }
-
-    if (!payload?.id) return;
-
-    const id = payload.id;
-    connections.set(id, ws);
-    monitors.delete(ws);
-    // Log full payload to stderr (accessible via TaskOutput), slim version
-    // to stdout for the Monitor notification (avoids truncation).
-    console.error(JSON.stringify(payload));
-    console.log(`TASK: ${JSON.stringify(slimPayload(payload))}`);
-  });
-
-  ws.on('close', () => {
-    monitors.delete(ws);
-    for (const [id, conn] of connections) {
-      if (conn === ws) connections.delete(id);
-    }
-  });
-});
-
-const server = http.createServer((req, res) => {
-  const match = req.url?.match(/^\/complete\/([a-z0-9]+)$/i);
-  if (req.method === 'POST' && match) {
-    const taskId = match[1];
-    const ws = connections.get(taskId);
-    if (ws && ws.readyState === ws.OPEN) {
-      ws.send(`COMPLETE:${taskId}`);
-      connections.delete(taskId);
-      res.writeHead(200);
-      res.end(`ok (task ${taskId})`);
-    } else {
-      res.writeHead(404);
-      res.end(`not found (task ${taskId})`);
-    }
-  } else if (req.method === 'POST' && req.url === '/reload') {
-    const all = new Set(monitors);
-    for (const [, ws] of connections) all.add(ws);
-    let count = 0;
-    for (const ws of all) {
-      if (ws.readyState === ws.OPEN) { ws.send('RELOAD'); count++; }
-    }
-    res.writeHead(200);
-    res.end(`reload sent to ${count} client(s)`);
-  } else {
-    res.writeHead(404);
-    res.end('not found');
-  }
-});
-
-server.listen(HTTP_PORT, () => {
-  console.log(`ws-task-server: WS on ${WS_PORT}, HTTP on ${HTTP_PORT}`);
-});
-```
-
-**`ws` module:** Do NOT install it separately. It is present in `<frontend>/node_modules/ws` as a transitive dependency (Next.js pulls it in; CRA pulls it in via `webpack-dev-server`). Run the server with `NODE_PATH` pointing there (see Step 3). The server code above handles both the v7 (`Server`) and v8+ (`WebSocketServer`) export names automatically.
-
-### Step 3 — Start the server with Monitor
-
-Use the **Monitor tool** to start the server as a persistent background process:
-
-```
+### Step 3 — Start server with Monitor
+```sh
 NODE_PATH=<frontend>/node_modules node <repo-root>/ws-task-server.js
 ```
+Verify: `lsof -i :7332 | grep LISTEN && lsof -i :7333 | grep LISTEN`. Expect `ws-task-server: WS on 7332, HTTP on 7333`.
 
-Monitor streams every stdout line as a notification. When the server starts successfully you will see:
+### Step 4 — dom-inspector.ts
+Create `<frontend>/src/mocks/dom-inspector.ts` exporting `setupDomInspector()`. Must contain:
 
-```
-ws-task-server: WS on 7332, HTTP on 7333
-```
+- `DOMInspector` class with `activate()`/`deactivate()`, hover/click handlers, column highlighting, shimmer overlay. See [reference/dom-inspector-methods.md](reference/dom-inspector-methods.md) for full implementations.
+- `setupDomInspector()` — creates FAB (orange ⋞), screenshot button (indigo []), wires drag-to-select screenshot mode, reload listener, and all event handlers.
+- `ElementContext` interface with `selector`, `tagName`, `outerHTML`, `textContent`, `computedStyles`, `boundingRect`, `container`, `pageTitle`, `componentHierarchy`, `columnIndex`.
+- Screenshot functions: `captureElementToDataUrl(el)` (deep-clone + SVG foreignObject → canvas), `uploadScreenshot(taskId, dataUrl)`, `showScreenshotPanel()`.
+- Shimmer CSS injected via `<style>` in `document.head`.
 
-If that line does not appear, check for `MODULE_NOT_FOUND` (wrong `NODE_PATH`) or a port conflict.
+FAB states:
+- **Idle** — orange (#F97316)
+- **Active** — emerald green (#059669) + pulse animation (`__outpost_fab_active`)
+- **Panel open** — hidden
 
-**Verify the server is listening** (using bash):
+### Step 5 — LiveUIProvider.tsx
+Create `<frontend>/src/lib/LiveUIProvider.tsx`. Framework-specific wiring:
 
-```sh
-lsof -i :7332 | grep LISTEN && lsof -i :7333 | grep LISTEN
-```
+**Next.js:** `'use client'`, import from `'@/mocks/dom-inspector'`, wire in `layout.tsx` inside `<body>`.
 
-Both ports must show `LISTEN` before proceeding.
+**CRA/CRACO:** No `'use client'`, import from `'../mocks/dom-inspector'` (relative path, not `@/`), wire in `App.tsx` wrapping `<Router>` children.
 
-### Step 4 — Verify dom-inspector.ts
-
-Check for `<frontend>/src/mocks/dom-inspector.ts`. If missing, create it. It must export `setupDomInspector()` and contain:
-
-- `ElementContext` interface — clicked element fields plus enriched `container` context and `pageTitle`. Optionally includes `componentHierarchy` (see framework-specific section below).
-- `DOMInspector` class:
-  - `init()` — creates FAB and starts reload listener
-  - `connectReloadListener()` — persistent WS to `ws://localhost:7332`; calls `window.location.reload()` on `RELOAD` message; auto-reconnects after 3 s on unexpected disconnect
-  - `activate()` / `deactivate()` — crosshair cursor, hover highlight overlay, click capture. FAB turns emerald green with pulse animation (`__outpost_fab_active` class) instead of being hidden.
-  - `showPanel(ctx, element)` — fixed panel with element selector label, textarea, **Cancel button** (calls `deactivate()`: restores FAB, hides highlight, no task sent), **Send Fix Task button**, and **Escape key handler** (same as Cancel). The orange highlight rectangle stays visible over the captured element while the panel is open.
-  - `onClick` handler — does NOT call `deactivate()`. Instead manually removes event listeners, keeps the FAB hidden, and pins the highlight at the captured element's bounding rect so it stays visible during panel input. If a `<th>` (table header) was clicked, calls `highlightTableColumn()` to show full-column highlight and `enrichContainerWithColumn()` to populate the container context with all cell values from that column.
-  - `enrichContainerWithColumn(th, ctx)` — when a `<th>` is clicked, collects the text content of every cell in that column across all rows and populates `ctx.container.text` (pipe-joined), `ctx.container.dataKeys` (cell texts array), `ctx.container.description` ("table column"), and `ctx.container.title` (column header text).
-  - `dispatchFixTask(ctx, prompt, element)` — generates 8-char alphanumeric `id`, hides FAB, applies shimmer, opens WS, sends `{type:"TASK", payload}`, listens for `COMPLETE:<id>`, restores FAB on completion. 180 s fallback timeout.
-  - `applyShimmer(el)` — **MUST use `position:fixed` overlay appended to `document.body`**, positioned via `el.getBoundingClientRect()`. Do NOT `appendChild` to the target element — SVG nodes (`rect`, `path`, `circle`, etc.) silently reject HTML children.
-  - `enrichContext(el)` — walks up the DOM (max 10 levels) to find a card-like ancestor; extracts `title`, `value`, `description`, `dataKeys` from its children
-  - `onHover` handler — highlights elements on hover. When hovering over a `<th>` (table header), calls `highlightTableColumn(th)` which calculates the combined bounding rect of all cells at that column index across all rows (`thead`/`tbody`/`tfoot`), highlighting the entire column.
-  - `findSelector(el)` — inline CSS selector generator (no external deps), prefers `#id`, falls back to tag + class + `:nth-of-type`
-- Shimmer CSS injected via `<style>` appended to `document.head` at module load time
-- FAB: orange circle `⋞`, `position:fixed`, bottom-right, 36 px, `z-index:2147483645`
-- FAB has three visual states:
-  - **Idle** — orange (#F97316) background, idle
-  - **Active selection** — emerald green (#059669) with pulsing ring animation (`__outpost_fab_active` class)
-  - **Panel open** — FAB hidden (the panel UI replaces it)
-- FAB is hidden while shimmer is active; restored only on task completion or fallback timeout
-
-The reference implementation lives at `<frontend>/src/mocks/dom-inspector.ts` in the esg-demo-next repo.
-
-#### Key method implementations — reference file
-
-Full TypeScript implementations for the column highlighting, highlight persistence, FAB state transitions, and enriched column payload are in **[reference/dom-inspector-methods.md](reference/dom-inspector-methods.md)**. Read that file when modifying `dom-inspector.ts`, not during initial setup.
-
-#### Framework-specific: Component hierarchy detection
-
-The payload can include a `element.componentHierarchy` field that identifies the source component chain. The detection mechanism depends on the framework:
-
-**React:** The inspector walks the React fiber tree (`__reactFiber$` property on DOM elements) up to 30 levels, collecting named function/class component names. The result looks like `"th (CurrentTabPane > Table > Column)"`. Deduplicates repeated names, skips anonymous types. Full code is in **[reference/dom-inspector-methods.md](#react-component-hierarchy-detection)**.
-
-**Angular / others:** Component hierarchy detection is not currently implemented. The field will be `null`. Fall back to `page` URL and `container.title` to locate source files.
-
-This feature is entirely optional — when `componentHierarchy` is missing or null, use the `page` URL and `container` context to find the relevant source file.
-
-### Step 5 — Verify LiveUIProvider.tsx
-
-Check for `<frontend>/src/lib/LiveUIProvider.tsx`. If missing, create it using the variant for the detected framework.
-
-**Next.js (App Router)**
-
-```tsx
-'use client'
-
-import { useEffect } from 'react'
-
-export default function LiveUIProvider({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    if (process.env.NODE_ENV !== 'development') return
-    async function init() {
-      try {
-        const { setupDomInspector } = await import('@/mocks/dom-inspector')
-        setupDomInspector()
-      } catch (e) {
-        console.warn('[LiveUI] dom-inspector init failed:', e)
-      }
-    }
-    init()
-  }, [])
-
-  return <>{children}</>
-}
-```
-
-Wire in `<frontend>/src/app/layout.tsx` inside `<body>`:
-
-```tsx
-import LiveUIProvider from '@/lib/LiveUIProvider'
-
-<LiveUIProvider>{children}</LiveUIProvider>
-```
-
-**CRA / CRACO differences from Next.js:**
-- No `'use client'` directive
-- Import from `'../mocks/dom-inspector'` (no `@/` alias)
-- Import from `'../lib/LiveUIProvider'` (relative path)
-- Wire in `App.tsx` (not a layout file), wrapping `<Router>` children
-- No SSR concern, so plain import suffices (no `next/dynamic`)
-- Same component code otherwise
+Both variants dynamically import `setupDomInspector()` inside `useEffect`, guarded by `NODE_ENV === 'development'`.
 
 ### Step 6 — User starts dev server
+**Claude must NOT start the dev server.** Check `package.json` scripts and instruct the user:
 
-**Claude must NOT start the dev server.** Check the `scripts` field in `package.json` to identify the right command, then instruct the user:
-
-| Framework | Typical command |
-|-----------|----------------|
+| Framework | Command |
+|-----------|---------|
 | Next.js | `npm run dev` |
 | CRA | `npm start` |
-| CRA with mock script | `npm run start:mock` (check scripts first) |
+| CRA with mocks | `npm run start:mock` |
 
-Tell them the FAB (⋞) will appear at bottom-right once the dev server is running and the page loads in the browser.
+Two buttons appear at bottom-right: orange ⋞ (inspect), indigo [] (screenshot).
 
 ---
 
 ## Usage Flow
 
-### Phase A — User captures an element
+### Phase A — Element inspect
+1. User clicks orange ⋞ → FAB turns emerald, crosshair cursor, elements highlight orange on hover
+2. User clicks element → crosshair ends, FAB hidden, highlight pinned. Panel shows selector + textarea
+3. User describes fix, presses Enter / clicks "Send Fix Task" — or Cancel/Escape to dismiss
+4. If confirmed: orange shimmer over element, browser sends `TASK` via WebSocket
 
-1. User clicks the orange FAB (⋞) — FAB turns emerald green with pulse, cursor becomes crosshair, elements highlight with orange border on hover
-2. User clicks the target element — crosshair mode ends, FAB is hidden, but the orange highlight rectangle **stays visible** over the selected element. A panel appears with the element's selector and a textarea.
-3. User types a fix description and presses Enter / clicks "Send Fix Task" — or clicks "Cancel" / presses Escape to dismiss (highlight and FAB restore to idle state) with no task sent
-4. If confirmed: panel closes, orange shimmer appears over the selected element, browser sends `TASK` over WebSocket to `ws://localhost:7332`
+### Phase A2 — Screenshot capture
+1. User clicks indigo [] → crosshair cursor
+2. User drags → dashed indigo selection rectangle
+3. User releases → best container found via `elementFromPoint()` at center, walking up to enclosing ancestor
+4. Element deep-cloned with inlined styles → SVG foreignObject → canvas → PNG data URL
+5. Panel opens with thumbnail preview, selector, textarea
+6. User sends → PNG uploaded to `POST /screenshot` on 7333, saved to `/tmp/liveui-screenshot-<id>.png`. TASK dispatched with `screenshotPath`
+7. Indigo shimmer over region
 
-### Phase B — TASK notification arrives
+### Phase B — TASK arrives
+Monitor delivers the TASK line. **Verify required fields** (see Payload Schema below). If `screenshotPath` present, `Read` the image file to see the captured region.
 
-The Monitor tool delivers the TASK line as a real-time notification the moment the browser sends the task over WebSocket. **Before acting, verify all required fields are present** (see Payload Schema below). If any required field is missing or the JSON is malformed, the server has a bug — fix it before proceeding.
+### Phase C — Plan & apply
+1. Read payload — identify page, component, and source file. Use `page` + `pageTitle` for route, `element.componentHierarchy` for React component name, `container.title` for card identity.
+2. Find source file (`src/app/` or `src/components/` for Next.js, `src/feature/` for CRA)
+3. Apply code change
+4. Run type check: `cd <frontend> && npx tsc --noEmit 2>&1 | head -40`
+5. Must show **zero new errors in modified files** before proceeding
+6. Pre-completion checklist:
+   - [ ] Compilation gate passed
+   - [ ] File saved
+   - [ ] `taskId` matches payload `id`
+7. Send completion: `curl -s -X POST http://localhost:7333/complete/<taskId>`
+8. For mock-data-only changes: `curl -s -X POST http://localhost:7333/reload`
 
-### Phase C — Plan the work
-
-**Create a task list immediately** using this template:
-
-```
-1. Read payload — identify page, card, and relevant source file
-2. Locate source file for the change
-3. Apply the code change
-4. Run type check: npx tsc --noEmit
-5. Send completion: POST /complete/<taskId>
-```
-
-Use `page` + `pageTitle` to identify the route. Use **`element.componentHierarchy`** to identify the exact React component name — this tells you which source file to look for (e.g., `CurrentTabPane`, `InvoicePage`, `EmployeePage`). Use `container.title` to identify the exact card by name. Use `container.dataKeys` to understand the expected data shape. Together these let you find the relevant source file without guessing.
-
-To find source files, search by framework:
-
-- **Next.js:** `src/app/` (routes + layouts), `src/components/`, `src/lib/`, `src/mocks/MockProvider.tsx`, `src/app/api/`
-- **CRA:** `src/app/` or `src/pages/` (routes), `src/components/`, `src/lib/`, `src/mocks/`
-
-If the project uses a different directory structure, run `ls src/` to discover the actual layout before searching.
-
-### Phase D — Apply the change
-
-Apply the code change, then run:
-
-```sh
-cd <frontend> && npx tsc --noEmit 2>&1 | head -40
-```
-
-**If the type check shows new errors in your modified file(s):** fix them before proceeding. Do not send completion while type errors exist in code you changed.
-
-**Pre-existing errors in unrelated files** (files you did not touch) are not your concern — ignore them.
-
-**NodeList iteration rule:** Never use `for...of` over a NodeList returned by `querySelectorAll`. TypeScript requires `--downlevelIteration` for this, which is not enabled in this project. Always use `.forEach()` instead:
-
-```ts
-// ❌ Fails without --downlevelIteration
-for (const child of card.querySelectorAll('span, div')) { ... }
-
-// ✅ Always safe
-card.querySelectorAll('span, div').forEach((child) => { ... });
-```
-
-### Phase E — Send completion
-
-**Compilation gate — mandatory before sending completion.**
-
-Run the type check and confirm it is clean:
-
-```sh
-cd <frontend> && npx tsc --noEmit 2>&1 | head -40
-```
-
-Only proceed if the output shows **zero new errors in your modified files**. If there are errors, fix them and re-run until the check is clean. Do not skip this step even for trivial-looking changes — undetected type errors will break the build silently.
-
-Once the compilation gate passes, run the pre-completion checklist:
-
-- [ ] Compilation gate passed (no new tsc errors in modified files)
-- [ ] File is saved to disk
-- [ ] `taskId` in the curl matches exactly the `id` from the TASK payload
-
-Then send completion:
-
-```sh
-curl -s -X POST http://localhost:7333/complete/<taskId>
-```
-
-Expected response: `ok (task <taskId>)`
-
-The shimmer disappears and the dev server hot-reloads the change.
-
-### Phase F — Force reload for mock-data-only changes
-
-If the change was **mock data only** (e.g. editing values in `MockProvider.tsx`) and HMR didn't trigger a visible re-render, force a full page reload:
-
-```sh
-curl -s -X POST http://localhost:7333/reload
-```
-
-Expected response: `reload sent to N client(s)`
-
-The browser receives `RELOAD` over its persistent WS connection and calls `window.location.reload()`. Only use this for mock data changes — component/JSX changes are handled by standard HMR.
-
----
-
-## Handling Edge Cases
-
-### TypeScript errors in modified files
-
-Fix the errors before sending completion. If a fix would require changing infrastructure files (`dom-inspector.ts`, `LiveUIProvider.tsx`, `ws-task-server.js`) — which are off-limits — tell the user and describe what manual change is needed. Still send completion so the shimmer clears.
-
-### Concurrent tasks
-
-If two TASK notifications arrive before the first is resolved, **process them sequentially**: finish the first task completely (type check + completion curl) before starting the second. Do not apply both changes simultaneously — overlapping edits to the same file will cause conflicts.
-
-### WS server not running
-
-If `lsof -i :7332` shows nothing: the server is not running. Restart it (Step 3). The shimmer will auto-remove after 180 s regardless. You can still apply the change and send completion once the server is restarted — if the browser tab is still open and reconnects.
-
-### Completion returns 404
-
-The browser's WebSocket connection was already closed (tab reload, navigation, or the 180 s fallback triggered). The shimmer is already gone. Still log the completion attempt for the user.
+### Timing
+- Objective: TASK → change → completion in **under 60s** for simple changes
+- Shimmer auto-removes after **180s** if no completion
 
 ---
 
 ## Payload Schema
 
-Every TASK payload printed by the server contains these fields:
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
+| Field | Type | Req | Description |
+|-------|------|-----|-------------|
 | `id` | string | yes | 8-char alphanumeric task ID |
 | `type` | string | yes | Always `"dom-fix"` |
-| `prompt` | string | yes | Free-text user description of the fix |
-| `element.selector` | string | yes | CSS selector targeting the captured element |
+| `prompt` | string | yes | Free-text fix description |
+| `element.selector` | string | yes | CSS selector |
 | `element.tag` | string | yes | Lowercase tag name |
 | `element.html` | string | yes | `outerHTML` truncated to 2000 chars |
-| `element.text` | string | yes | `textContent` trimmed, truncated to 500 chars |
-| `element.styles` | object | yes | Map of computed style properties |
-| `element.componentHierarchy` | string | no | React component chain from fiber tree, e.g. `"th (CurrentTabPane > Table > Column)"` |
-| `container.selector` | string | no | CSS selector for the containing card |
-| `container.tag` | string | no | Tag name of the card container |
-| `container.html` | string | no | Card `outerHTML` truncated to 3000 chars |
-| `container.text` | string | no | All card text truncated to 1000 chars |
-| `container.title` | string | no | Extracted card title (e.g. `"Water Intake"`) |
-| `container.value` | string | no | Extracted numeric value (e.g. `"45,200"`) |
-| `container.description` | string | no | Unit or description (e.g. `"m³"`) |
-| `container.dataKeys` | string[] | no | Sub-labels from the card (e.g. pie slice names) |
-| `pageTitle` | string | yes* | `document.title` — identifies the page route |
-| `page` | string | yes | Full `window.location.href` |
+| `element.text` | string | yes | `textContent` trimmed to 500 chars |
+| `element.styles` | object | yes | Computed style properties |
+| `element.componentHierarchy` | string | no | React fiber chain, e.g. `"th (CurrentTabPane > Table)"` |
+| `element.columnIndex` | number | no | 0-based column index when `<th>` clicked |
+| `container.*` | varied | no | Card context: `selector`, `tag`, `html`, `text`, `title`, `value`, `description`, `dataKeys` |
+| `pageTitle` | string | yes* | `document.title` |
+| `page` | string | yes | `window.location.href` |
+| `screenshotPath` | string | no | Path to saved PNG on disk. Use `Read` to view. |
 
-\* `pageTitle` and the entire `container` object may be absent in CRA projects where an older `dom-inspector.ts` is already in place and does not implement `enrichContext()` or send `pageTitle`. Similarly, `element.componentHierarchy` may be absent in older inspector versions that don't implement `getReactComponentHierarchy`. When these fields are missing, use the `page` URL alone to identify the route and locate the relevant source file.
+\* `pageTitle`/`container`/`componentHierarchy` may be absent in older inspector versions — fall back to `page` URL.
 
 ---
 
-## Code Change Constraints
+## Handling Edge Cases
 
-Changes MUST:
-
-- **Target application code** by default. Infrastructure files may be modified when explicitly requested (e.g., adding component hierarchy support):
-  - `src/mocks/dom-inspector.ts` — add features like component hierarchy, column highlighting
-  - `src/lib/LiveUIProvider.tsx` — wire up inspector in dev mode
-  - `<repo-root>/ws-task-server.js` — adjust logging, add slim payload support
-- **Pass type check:** `npx tsc --noEmit` must show no new errors in the modified file(s)
-- **No new npm dependencies:** work with what's already in `package.json` or inline the logic
-- **Be scoped:** only change the file(s) directly responsible for the user's request. Do not refactor unrelated code.
-
----
-
-## Mock Data Approach
-
-When the user asks for mock data to populate an empty card or page:
-
-1. **Identify mock pattern** — fetch interceptor (`MockProvider.tsx` patches `window.fetch`) or MSW handlers (`src/mocks/handlers/`). Prefer fetch interceptor for Next.js (avoids SSR issues with MSW).
-2. **Find the endpoint** — read the page source file to find the exact `fetch()` URL. Do not guess.
-3. **Add one handler** — mock only the endpoint feeding the targeted card.
-4. **HMR compatibility** — the interceptor must read from a `useRef` to avoid stale closures:
-
-```tsx
-const dataRef = useRef(mockData)
-dataRef.current = mockData
-```
-
-5. **Wire MockProvider** (`next/dynamic` with `{ ssr: false }` for Next.js; plain import for CRA), wrapping outside LiveUIProvider in the layout/App.
-
-```tsx
-import MockProvider from '../mocks/MockProvider'
-
-// in render, wrapping Router children:
-<MockProvider>
-  <LiveUIProvider>
-    {/* routes */}
-  </LiveUIProvider>
-</MockProvider>
-```
-
----
-
-## Completion Signal Reference
-
-| Action | Command | Expected response |
-|--------|---------|-------------------|
-| Standard task completion | `curl -s -X POST http://localhost:7333/complete/<taskId>` | `ok (task <taskId>)` |
-| Force full page reload (mock data only) | `curl -s -X POST http://localhost:7333/reload` | `reload sent to N client(s)` |
-
-### Timing
-
-- Objective: TASK received → change applied → completion sent in **under 60 seconds** for simple changes.
-- The shimmer auto-removes after **180 seconds** if no completion signal is received.
+| Situation | Action |
+|-----------|--------|
+| TypeScript errors in modified files | Fix before completion. If fix requires infra files, tell user + still send completion |
+| Concurrent tasks | Process sequentially — complete task 1 fully before starting task 2 |
+| Server not running (`lsof -i :7332` empty) | Restart via Monitor (Step 3). Shimmer auto-removes after 180s |
+| Completion returns 404 | WS connection already closed (tab nav/timeout). Shimmer already gone |
+| Screenshot missing or render fails | Fallback renders tag + text on white canvas. Verify `captureElementToDataUrl` |
+| Screenshot upload fails silently (no `screenshotPath` in payload) | CORS issue — browser on port 4300, server on 7333. Server must set `Access-Control-Allow-Origin: *` and handle `OPTIONS` preflight. See [reference/server-code.md](reference/server-code.md) |
+| `className.toLowerCase is not a function` in `enrichContainer` | SVG elements have non-string `className`. Guard with `typeof card.className === 'string'` |
+| HMR doesn't reflect change | `POST /reload` for force refresh. Use for mock-data-only changes |
+| `for...of` over NodeList | Use `.forEach()` — `--downlevelIteration` not enabled |
 
 ---
 
 ## Common Mistakes
 
 | Mistake | Fix |
-|---------|-----|
-| Sending completion before saving the file | Always save first. The browser sees the result when the shimmer disappears. |
-| Wrong `taskId` in curl | Copy the `id` value exactly from the TASK JSON. It is 8 alphanumeric chars. |
-| Editing `dom-inspector.ts`, `LiveUIProvider.tsx`, or `ws-task-server.js` | These are infrastructure — only modify when explicitly requested (e.g., adding component hierarchy, fixing notification truncation). Default to application code changes. |
-| Server not running (`lsof -i :7332` empty) | Start the server via Monitor (Step 3) before acting on any TASK. Do not use bash — it's ephemeral and can't host a persistent server. |
-| `MODULE_NOT_FOUND` when starting server | Wrong `NODE_PATH`. Set it to `<frontend>/node_modules`, not `<repo-root>/node_modules`. |
-| TypeScript errors in modified file | Run `npx tsc --noEmit` and fix new errors before curling completion. Ignore pre-existing errors in other files. |
-| `for...of` over a NodeList | `querySelectorAll` returns a `NodeList`. Iterating it with `for...of` requires `--downlevelIteration`, which is not enabled. Use `.forEach()` instead — it works natively on `NodeList` in all TypeScript versions. |
-| Skipping the compilation gate | Always run `npx tsc --noEmit` and confirm it is clean before sending `POST /complete`. Never assume a change is type-safe without checking. |
-| Notification truncated (missing `componentHierarchy` or `page`) | The `element.html`/`container.html` blobs make the payload too large. Server logs full payload to stderr and a slim version to stdout via `slimPayload()`. Verify the server code includes `slimPayload` + `console.error(full)` + `console.log(slim)`. |
-| DOM inspector changes not reflected in browser | HMR only hot-reloads components, not the mock/inspector modules loaded at page init. Send `POST /reload` or instruct the user to do a hard refresh. |
-| Shimmer not appearing on SVG elements | The targeted element may be `rect`, `path`, or `circle` — SVG nodes reject HTML children. Shimmer must use a `fixed` overlay on `document.body` positioned via `getBoundingClientRect()`. |
-| Mocking too many endpoints | Only mock the single endpoint that feeds the card the user pointed at. Use `container.title` + `page` to identify it. |
-| HMR not reflecting mock data edit | Send `POST /reload` after the completion curl to force a full page reload. |
-| Two tasks in flight simultaneously | Process tasks sequentially. Complete task 1 fully (including curl) before starting task 2. |
-| Starting the dev server yourself | Never run `npm run dev`. Instruct the user to start it and wait for confirmation. |
-| `<repo-root>` or `<frontend>` not resolved | Run `git rev-parse --show-toplevel` and inspect `package.json` for `next` or `react-scripts`/`@craco/craco` to resolve both paths and detect the framework before setup. |
-| CRA: `'use client'` in LiveUIProvider | CRA is not Next.js — remove the `'use client'` directive. It is meaningless in CRA and may cause a parse error. |
-| CRA: `@/` import alias in LiveUIProvider | CRA does not support the `@/` alias. Use a relative path (`../mocks/dom-inspector`) or the project's configured alias (`~/`). |
-| CRA: wired in a layout file | CRA has no `layout.tsx`. Wire `LiveUIProvider` in `App.tsx` (or the root component) wrapping the Router's children. |
-| CRA: `npm run dev` for dev server | CRA uses `npm start` (or a custom script like `npm run start:mock`). Check `package.json` scripts before instructing the user. |
-| CRA: `pageTitle` or `container` missing from payload | Older CRA `dom-inspector.ts` implementations may not send these fields. Fall back to the `page` URL to identify the route. Do not error — treat them as optional. |
-| `ws` module: `WebSocketServer is not a constructor` | The installed `ws` version is v7, which exports `Server` not `WebSocketServer`. The server template above handles this automatically via `wsModule.WebSocketServer \|\| wsModule.Server`. |
+|---------|------|
+| Wrong `taskId` in curl | Copy `id` verbatim from TASK JSON. 8 alphanumeric chars |
+| Skipping compilation gate | Always run `npx tsc --noEmit` before `POST /complete` |
+| Notification truncated | Server logs full payload to stderr, slim to stdout. Check `slimPayload()` includes needed fields |
+| Starting dev server yourself | Never. Instruct user to run it |
+| CRA: `'use client'` or `@/` alias | CRA needs neither. Use relative `../` paths |
+| Server `MODULE_NOT_FOUND` | `NODE_PATH` must point to `<frontend>/node_modules`, not repo root |
+| `WebSocketServer is not a constructor` | v7 exports `Server`. Code handles both: `wsModule.WebSocketServer \|\| wsModule.Server` |
