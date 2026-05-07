@@ -4,7 +4,7 @@
 
 ---
 <div align="center">
-<div style="font-size: 24px;">Command your <span style="color: #ff6b35;">coding agents</span> from browser</div>
+<div style="font-size: 24px;"><span style="color: #ff6b35;">Visual Prompting</span> for Frontend development</div>
 <br/> 
 Frontloop is available as a plugin for Claude Code and can be extended to other agents and platforms. The first skill, <span style="color: #ff6b35;">live-ui-generation</span>, instruments any (read <a href="#agent-support-beyond-claude-code">supported frameworks</a>) frontend frameworks and enables real-time UI changes by clicking on elements and describing the desired change — no more context-switching to an IDE or writing CSS overrides.
 </div>
