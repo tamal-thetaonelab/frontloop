@@ -53,7 +53,7 @@ NODE_PATH=<frontend>/node_modules node <repo-root>/ws-task-server.js
 Verify: `lsof -i :7332 | grep LISTEN && lsof -i :7333 | grep LISTEN`. Expect `ws-task-server: WS on 7332, HTTP on 7333`.
 
 ### Step 4 — dom-inspector.ts
-Copy [reference/dom-inspector.ts](reference/dom-inspector.ts) verbatim to `<frontend>/src/mocks/dom-inspector.ts`. This is the canonical, battle-tested implementation — do not reconstruct from scratch.
+Copy [reference/dom-inspector.ts](reference/dom-inspector.ts) verbatim to `<frontend>/src/mocks/dom-inspector.ts`. This is the canonical, battle-tested implementation — do not reconstruct from scratch. Use bash / file explorer to copy, not an LLM — the hover logic and hide/restore coordination are subtle and easy to break. You will make changes to this file later, but start with the reference copy.
 
 Key exports and guarantees:
 - `setupDomInspector()` — idempotent (returns `null` if already initialised; safe to call from multiple entry points)
