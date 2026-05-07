@@ -4,9 +4,11 @@
 
 ---
 <div align="center">
-<div style="font-size: 24px;"><span style="color: #ff6b35;">Visual Prompting</span> for Frontend development</div>
-<br/> 
-Frontloop is available as a plugin for Claude Code and can be extended to other agents and platforms. The first skill, <span style="color: #ff6b35;">live-ui-generation</span>, instruments any (read <a href="#agent-support-beyond-claude-code">supported frameworks</a>) frontend frameworks and enables real-time UI changes by clicking on elements and describing the desired change — no more context-switching to an IDE or writing CSS overrides.
+<div style="font-size: 24px;"><span style="color: #ff6b35;">Frontend iteration,</span> in the browser, with any coding agent.</div>
+  <br/> 
+  Frontloop instruments your running dev app in the browser. Click any element, describe the change, and structured DOM context — selector, computed styles, React/Angular component hierarchy, and page URL - streams to your coding agent over WebSocket. The agent edits the real source file. Hot reload delivers the result.
+
+  Works with Claude Code today. Cursor, Copilot Workspace, Gemini CLI, and Windsurf are on the roadmap.
 </div>
 <br/> 
 
@@ -15,9 +17,10 @@ Frontloop is available as a plugin for Claude Code and can be extended to other 
 ![demo](./fl-gif.gif)
 
 ## Why
-- **Efficient**: The current workflow for making UI changes with coding agents is disjointed and inefficient. You have to switch between your running app (browser), the coding agent and your IDE. You have to describe the element, its styles, and its context in text prompts, which is less precise and more time-consuming than direct interaction. Frontloop fixes that.
+- **Efficient**: The current workflow for making UI changes with coding agents is disjointed and inefficient. You have to switch between your running app (browser), the coding agent and your IDE. You have to describe the element, its styles, and its context in text prompts, which is less precise and more time-consuming than direct interaction. Frontloop sends structured DOM context directly to the agent — selector, computed styles, and component hierarchy — so it locates the right file and makes the edit in one step.
 - **Time & Token saving**: When you say "remove the due date column on invoice page", Less context for the agent leads to more back-and-forth using `grep` and slower iterations. With full DOM context, coding agents can make precise edits in one step, saving tokens and time.
 - **Intuitive**: Faster iterations with real-time feedback enable a more intuitive and efficient workflow. You can see the impact of your changes immediately, make adjustments on the fly, and achieve the desired result in fewer steps.
+- **Agent-agnostic**: The WebSocket server and DOM inspector work with any coding agent that can read from a WebSocket endpoint. Claude Code is supported today. Cursor, Copilot Workspace, Gemini CLI, and Windsurf are planned. Same browser extension, same payload, same workflow.
 
 ## Install
 
@@ -40,7 +43,7 @@ An orange shimmer appears over the selected element while Claude works and clear
 ![side-by-side](./side-by-side.png)
 ![demo](./demo.png)
 
-What Claude receives per task:
+Other visual editing tools give the agent the rendered page. Frontloop gives it the component tree.
 
 ```json
 {
