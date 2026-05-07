@@ -80,6 +80,25 @@ const HTTP_PORT = 7333;
 const connections = new Map(); // taskId → ws
 const monitors = new Set();    // monitor connections (no task id)
 
+// Strip verbose fields (HTML blobs) that cause notification truncation.
+// Keeps id, type, prompt, element.tag, element.componentHierarchy,
+// element.text, container.title, pageTitle, page.
+function slimPayload(data) {
+  const slim = { id: data.id, type: data.type, prompt: data.prompt };
+  if (data.element) {
+    slim.element = {};
+    for (const k of ['selector','tag','text','componentHierarchy']) {
+      if (data.element[k]) slim.element[k] = data.element[k];
+    }
+  }
+  if (data.container && data.container.title) {
+    slim.container = { title: data.container.title };
+  }
+  if (data.pageTitle) slim.pageTitle = data.pageTitle;
+  if (data.page) slim.page = data.page;
+  return slim;
+}
+
 const wss = new WebSocketServer({ port: WS_PORT });
 wss.on('connection', (ws) => {
   monitors.add(ws);
@@ -103,9 +122,13 @@ wss.on('connection', (ws) => {
 
     if (!payload?.id) return;
 
-    connections.set(payload.id, ws);
+    const id = payload.id;
+    connections.set(id, ws);
     monitors.delete(ws);
-    console.log(`TASK: ${JSON.stringify(payload)}`);
+    // Log full payload to stderr (accessible via TaskOutput), slim version
+    // to stdout for the Monitor notification (avoids truncation).
+    console.error(JSON.stringify(payload));
+    console.log(`TASK: ${JSON.stringify(slimPayload(payload))}`);
   });
 
   ws.on('close', () => {
@@ -180,7 +203,7 @@ Both ports must show `LISTEN` before proceeding.
 
 Check for `<frontend>/src/mocks/dom-inspector.ts`. If missing, create it. It must export `setupDomInspector()` and contain:
 
-- `ElementContext` interface — clicked element fields plus optional enriched `container` context and `pageTitle`
+- `ElementContext` interface — clicked element fields plus enriched `container` context and `pageTitle`. Optionally includes `componentHierarchy` (see framework-specific section below).
 - `DOMInspector` class:
   - `init()` — creates FAB and starts reload listener
   - `connectReloadListener()` — persistent WS to `ws://localhost:7332`; calls `window.location.reload()` on `RELOAD` message; auto-reconnects after 3 s on unexpected disconnect
@@ -206,6 +229,16 @@ The reference implementation lives at `<frontend>/src/mocks/dom-inspector.ts` in
 #### Key method implementations — reference file
 
 Full TypeScript implementations for the column highlighting, highlight persistence, FAB state transitions, and enriched column payload are in **[reference/dom-inspector-methods.md](reference/dom-inspector-methods.md)**. Read that file when modifying `dom-inspector.ts`, not during initial setup.
+
+#### Framework-specific: Component hierarchy detection
+
+The payload can include a `element.componentHierarchy` field that identifies the source component chain. The detection mechanism depends on the framework:
+
+**React:** The inspector walks the React fiber tree (`__reactFiber$` property on DOM elements) up to 30 levels, collecting named function/class component names. The result looks like `"th (CurrentTabPane > Table > Column)"`. Deduplicates repeated names, skips anonymous types. Full code is in **[reference/dom-inspector-methods.md](#react-component-hierarchy-detection)**.
+
+**Angular / others:** Component hierarchy detection is not currently implemented. The field will be `null`. Fall back to `page` URL and `container.title` to locate source files.
+
+This feature is entirely optional — when `componentHierarchy` is missing or null, use the `page` URL and `container` context to find the relevant source file.
 
 ### Step 5 — Verify LiveUIProvider.tsx
 
@@ -291,7 +324,7 @@ The Monitor tool delivers the TASK line as a real-time notification the moment t
 5. Send completion: POST /complete/<taskId>
 ```
 
-Use `page` + `pageTitle` to identify the route. Use `container.title` to identify the exact card by name. Use `container.dataKeys` to understand the expected data shape. Together these let you find the relevant source file without guessing.
+Use `page` + `pageTitle` to identify the route. Use **`element.componentHierarchy`** to identify the exact React component name — this tells you which source file to look for (e.g., `CurrentTabPane`, `InvoicePage`, `EmployeePage`). Use `container.title` to identify the exact card by name. Use `container.dataKeys` to understand the expected data shape. Together these let you find the relevant source file without guessing.
 
 To find source files, search by framework:
 
@@ -398,6 +431,7 @@ Every TASK payload printed by the server contains these fields:
 | `element.html` | string | yes | `outerHTML` truncated to 2000 chars |
 | `element.text` | string | yes | `textContent` trimmed, truncated to 500 chars |
 | `element.styles` | object | yes | Map of computed style properties |
+| `element.componentHierarchy` | string | no | React component chain from fiber tree, e.g. `"th (CurrentTabPane > Table > Column)"` |
 | `container.selector` | string | no | CSS selector for the containing card |
 | `container.tag` | string | no | Tag name of the card container |
 | `container.html` | string | no | Card `outerHTML` truncated to 3000 chars |
@@ -409,7 +443,7 @@ Every TASK payload printed by the server contains these fields:
 | `pageTitle` | string | yes* | `document.title` — identifies the page route |
 | `page` | string | yes | Full `window.location.href` |
 
-\* `pageTitle` and the entire `container` object may be absent in CRA projects where an older `dom-inspector.ts` is already in place and does not implement `enrichContext()` or send `pageTitle`. When these fields are missing, use the `page` URL alone to identify the route and locate the relevant source file.
+\* `pageTitle` and the entire `container` object may be absent in CRA projects where an older `dom-inspector.ts` is already in place and does not implement `enrichContext()` or send `pageTitle`. Similarly, `element.componentHierarchy` may be absent in older inspector versions that don't implement `getReactComponentHierarchy`. When these fields are missing, use the `page` URL alone to identify the route and locate the relevant source file.
 
 ---
 
@@ -417,10 +451,10 @@ Every TASK payload printed by the server contains these fields:
 
 Changes MUST:
 
-- **Target only application code**, not infrastructure files. Never modify:
-  - `src/mocks/dom-inspector.ts`
-  - `src/lib/LiveUIProvider.tsx`
-  - `<repo-root>/ws-task-server.js`
+- **Target application code** by default. Infrastructure files may be modified when explicitly requested (e.g., adding component hierarchy support):
+  - `src/mocks/dom-inspector.ts` — add features like component hierarchy, column highlighting
+  - `src/lib/LiveUIProvider.tsx` — wire up inspector in dev mode
+  - `<repo-root>/ws-task-server.js` — adjust logging, add slim payload support
 - **Pass type check:** `npx tsc --noEmit` must show no new errors in the modified file(s)
 - **No new npm dependencies:** work with what's already in `package.json` or inline the logic
 - **Be scoped:** only change the file(s) directly responsible for the user's request. Do not refactor unrelated code.
@@ -476,12 +510,14 @@ import MockProvider from '../mocks/MockProvider'
 |---------|-----|
 | Sending completion before saving the file | Always save first. The browser sees the result when the shimmer disappears. |
 | Wrong `taskId` in curl | Copy the `id` value exactly from the TASK JSON. It is 8 alphanumeric chars. |
-| Editing `dom-inspector.ts`, `LiveUIProvider.tsx`, or `ws-task-server.js` | These are infrastructure — off-limits. Apply changes in application source files only. |
+| Editing `dom-inspector.ts`, `LiveUIProvider.tsx`, or `ws-task-server.js` | These are infrastructure — only modify when explicitly requested (e.g., adding component hierarchy, fixing notification truncation). Default to application code changes. |
 | Server not running (`lsof -i :7332` empty) | Start the server via Monitor (Step 3) before acting on any TASK. Do not use bash — it's ephemeral and can't host a persistent server. |
 | `MODULE_NOT_FOUND` when starting server | Wrong `NODE_PATH`. Set it to `<frontend>/node_modules`, not `<repo-root>/node_modules`. |
 | TypeScript errors in modified file | Run `npx tsc --noEmit` and fix new errors before curling completion. Ignore pre-existing errors in other files. |
 | `for...of` over a NodeList | `querySelectorAll` returns a `NodeList`. Iterating it with `for...of` requires `--downlevelIteration`, which is not enabled. Use `.forEach()` instead — it works natively on `NodeList` in all TypeScript versions. |
 | Skipping the compilation gate | Always run `npx tsc --noEmit` and confirm it is clean before sending `POST /complete`. Never assume a change is type-safe without checking. |
+| Notification truncated (missing `componentHierarchy` or `page`) | The `element.html`/`container.html` blobs make the payload too large. Server logs full payload to stderr and a slim version to stdout via `slimPayload()`. Verify the server code includes `slimPayload` + `console.error(full)` + `console.log(slim)`. |
+| DOM inspector changes not reflected in browser | HMR only hot-reloads components, not the mock/inspector modules loaded at page init. Send `POST /reload` or instruct the user to do a hard refresh. |
 | Shimmer not appearing on SVG elements | The targeted element may be `rect`, `path`, or `circle` — SVG nodes reject HTML children. Shimmer must use a `fixed` overlay on `document.body` positioned via `getBoundingClientRect()`. |
 | Mocking too many endpoints | Only mock the single endpoint that feeds the card the user pointed at. Use `container.title` + `page` to identify it. |
 | HMR not reflecting mock data edit | Send `POST /reload` after the completion curl to force a full page reload. |

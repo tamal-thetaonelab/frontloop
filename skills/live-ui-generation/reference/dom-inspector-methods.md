@@ -178,3 +178,92 @@ Injected into the `__outpost_styles__` `<style>` element at module load time.
 - **Idle** — no class, orange (#F97316) background
 - **Active selection** — `activate()` adds `__outpost_fab_active` class (emerald green + pulse)
 - **Panel open** — `onClick` removes the class and hides the FAB; `deactivate()` restores it
+
+---
+
+## React component hierarchy detection
+
+Walks the React fiber tree from a DOM element to find the owning component chain. This is React-specific — it relies on the `__reactFiber$<hash>` property that React attaches to rendered DOM nodes.
+
+**Interface usage:** Call `getReactComponentHierarchy(el)` in `captureContext()` and include the result as `componentHierarchy` in `ElementContext`. The WS payload sends it as `element.componentHierarchy`.
+
+**Panel display:** The panel header appends ` — <tag> (<ComponentHierarchy>)` so the user sees which component owns the clicked element.
+
+### getReactComponentHierarchy
+
+Filters out common framework wrappers (`Route`, `ConnectFunction`, `with*` HOCs, etc.) so the hierarchy shows only meaningful application component names.
+
+```typescript
+// Common framework wrapper names to skip — they don't help identify
+// the application component that owns the clicked element.
+const WRAPPER_RE = /^(Route|Switch|InnerLoadable|Loadable|ConnectFunction|Connect|ForwardRef|Provider|Consumer|Fragment|StrictMode|Context\.|with[A-Z])/;
+
+function getComponentName(type: any): string | null {
+  if (typeof type === 'function') return type.displayName || type.name || null;
+  if (typeof type === 'object' && type !== null) return type.displayName || null;
+  return null;
+}
+
+function getReactComponentHierarchy(el: Element): string | null {
+  // React 16+ uses __reactFiber$<hash>; pre-fiber used __reactInternalInstance$<hash>
+  const fiberKey = Object.keys(el).find(
+    (k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')
+  );
+  if (!fiberKey) return null;
+
+  const names: string[] = [];
+  // Skip the clicked element's own fiber (host component — type is a string like 'div')
+  let fiber = (el as any)[fiberKey]?.return;
+  let depth = 0;
+  const seen = new Set<string>();
+
+  while (fiber && depth < 50) {
+    const name = getComponentName(fiber.type);
+    if (name && !seen.has(name) && !name.startsWith('_') && !WRAPPER_RE.test(name)) {
+      names.unshift(name);
+      seen.add(name);
+    }
+    fiber = fiber.return;
+    depth++;
+  }
+
+  const tag = el.tagName.toLowerCase();
+  return names.length > 0 ? `${tag} (${names.join(' > ')})` : tag;
+}
+```
+
+### Integration in captureContext
+
+```typescript
+function captureContext(el: HTMLElement, _e: MouseEvent): ElementContext {
+  // ... existing code ...
+  return {
+    // ... existing fields ...
+    componentHierarchy: getReactComponentHierarchy(el),
+  };
+}
+```
+
+### Integration in WS payload
+
+```typescript
+const payload = {
+  id,
+  type: 'dom-fix',
+  prompt: userPrompt,
+  element: {
+    // ... existing fields ...
+    componentHierarchy: ctx.componentHierarchy,
+  },
+  // ...
+};
+```
+
+### Panel header display
+
+```typescript
+const compLabel = ctx.componentHierarchy
+  ? ` — ${ctx.componentHierarchy}`
+  : '';
+header.innerHTML = `<span>OUTPOST — ${ctx.tagName}${compLabel}</span>`;
+```

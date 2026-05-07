@@ -1,18 +1,23 @@
 <div align="center">
-  <img src="./frontloop-logo.png" alt="frontloop" height="64" />
+  <img src="./frontloop-logo.png" alt="frontloop" height="128" />
 </div>
 
 ---
 <div align="center">
-Frontloop is a Claude Code plugin marketplace for frontend development.<br/>
-It ships skills that close the loop between your browser and your coding agent.
+<div style="font-size: 24px;">Command your <span style="color: #ff6b35;">coding agents</span> from browser</div>
+<br/> 
+Frontloop is available as a plugin for Claude Code and can be extended to other agents and platforms. The first skill, <span style="color: #ff6b35;">live-ui-generation</span>, instruments any (read <a href="#agent-support-beyond-claude-code">supported frameworks</a>) frontend frameworks and enables real-time UI changes by clicking on elements and describing the desired change — no more context-switching to an IDE or writing CSS overrides.
 </div>
+<br/> 
 
 ---
 
 ![demo](./fl-gif.gif)
 
----
+## Why
+- **Efficient**: The current workflow for making UI changes with coding agents is disjointed and inefficient. You have to switch between your running app (browser), the coding agent and your IDE. You have to describe the element, its styles, and its context in text prompts, which is less precise and more time-consuming than direct interaction. Frontloop fixes that.
+- **Time & Token saving**: When you say "remove the due date column on invoice page", Less context for the agent leads to more back-and-forth using `grep` and slower iterations. With full DOM context, coding agents can make precise edits in one step, saving tokens and time.
+- **Intuitive**: Faster iterations with real-time feedback enable a more intuitive and efficient workflow. You can see the impact of your changes immediately, make adjustments on the fly, and achieve the desired result in fewer steps.
 
 ## Install
 
