@@ -24,6 +24,8 @@ interface ElementContext {
   columnIndex: number | null;
 }
 
+type OnCapture = (ctx: ElementContext, prompt: string) => void;
+
 const RELEVANT_STYLES = [
   'display', 'position', 'width', 'height', 'margin', 'padding',
   'color', 'background-color', 'font-size', 'font-weight',
@@ -154,19 +156,44 @@ function injectSpinnerStyles(): void {
   `;
   document.head.appendChild(style);
 }
-if (typeof document !== 'undefined') injectSpinnerStyles();
+injectSpinnerStyles();
 
 // -------- generating overlay manager --------
 
 const overlays: Record<string, HTMLElement> = {};
 let _speedDialContainer: HTMLElement | null = null;
 
+// -------- undo history --------
+
+const UNDO_STACK_KEY = '__frontloop_undo_stack__';
+
+const undoStack: string[] = (() => {
+  try { return JSON.parse(sessionStorage.getItem(UNDO_STACK_KEY) || '[]'); } catch { return []; }
+})();
+
+let _undoBtn: HTMLElement | null = null;
+
+function saveUndoStack(): void {
+  try { sessionStorage.setItem(UNDO_STACK_KEY, JSON.stringify(undoStack)); } catch {}
+}
+
+function updateUndoBtnState(): void {
+  if (!_undoBtn) return;
+  const hasHistory = undoStack.length > 0;
+  _undoBtn.style.background = hasHistory ? '#ef4444' : '#3a3a5a';
+  _undoBtn.style.cursor = hasHistory ? 'pointer' : 'default';
+  _undoBtn.style.opacity = hasHistory ? '1' : '0.4';
+  _undoBtn.title = hasHistory
+    ? `Undo last change (${undoStack.length} in history)`
+    : 'Nothing to undo';
+}
+
 function showGeneratingOverlay(taskId: string, rect: { top: number; left: number; width: number; height: number }): void {
   if (_speedDialContainer) _speedDialContainer.style.display = 'none';
   const overlay = document.createElement('div');
   overlay.className = '__frontloop_overlay';
-  overlay.style.top = `${rect.top}px`;
-  overlay.style.left = `${rect.left}px`;
+  overlay.style.top = `${rect.top + window.scrollY}px`;
+  overlay.style.left = `${rect.left + window.scrollX}px`;
   overlay.style.width = `${rect.width}px`;
   overlay.style.height = `${rect.height}px`;
   overlay.style.minWidth = '80px';
@@ -217,7 +244,7 @@ function findSelector(el: Element): string {
       const siblings = Array.from(parent.children).filter((c) => c.tagName === current!.tagName);
       if (siblings.length > 1) {
         const idx = siblings.indexOf(current) + 1;
-        selector += `:nth-of-type(${idx})`;
+        selector += `:nth-child(${idx})`;
       }
     }
 
@@ -265,8 +292,8 @@ function getXPath(el: Node): string {
 function enrichContainer(el: HTMLElement): ContainerContext {
   const empty: ContainerContext = { selector: '', tag: '', html: '', text: '', title: '', value: '', description: '', dataKeys: [] };
 
-  // walk up max 10 levels to find a card-like ancestor (start above el so clicking a card itself works)
-  let card: HTMLElement | null = el.parentElement;
+  // walk up max 10 levels to find a card-like ancestor
+  let card: HTMLElement | null = el;
   for (let i = 0; i < 10; i++) {
     if (!card) break;
     const role = card.getAttribute('role');
@@ -276,7 +303,7 @@ function enrichContainer(el: HTMLElement): ContainerContext {
     }
     card = card.parentElement;
   }
-  if (!card) return empty;
+  if (!card || card === el) return empty;
 
   const text = card.textContent?.trim().slice(0, 1000) ?? '';
 
@@ -294,7 +321,7 @@ function enrichContainer(el: HTMLElement): ContainerContext {
     if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'th'].includes(tag) && !title) {
       title = t.slice(0, 100);
     }
-    if (!value && (tag === 'strong' || tag === 'b' || child instanceof HTMLElement && child.dataset['value'])) {
+    if (!value && (tag === 'strong' || tag === 'b' || child instanceof HTMLElement && child.dataset.value)) {
       value = t.slice(0, 50);
     }
     if (['small', 'span', 'label'].includes(tag) && child !== card && !description.includes(t)) {
@@ -328,8 +355,10 @@ function enrichContainer(el: HTMLElement): ContainerContext {
   };
 }
 
-// -------- component hierarchy (React / Vue 3 / Angular) --------
+// -------- React component hierarchy --------
 
+// Common framework wrapper names to skip — they don't help identify
+// the application component that owns the clicked element.
 const WRAPPER_RE = /^(Route|Switch|InnerLoadable|Loadable|ConnectFunction|Connect|ForwardRef|Provider|Consumer|Fragment|StrictMode|Context\.|with[A-Z])/;
 
 function getComponentName(type: any): string | null {
@@ -339,12 +368,14 @@ function getComponentName(type: any): string | null {
 }
 
 function getReactComponentHierarchy(el: Element): string | null {
+  // React 16+ uses __reactFiber$<hash>; pre-fiber used __reactInternalInstance$<hash>
   const fiberKey = Object.keys(el).find(
     (k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')
   );
   if (!fiberKey) return null;
 
   const names: string[] = [];
+  // Skip the clicked element's own fiber (host component — type is a string like 'div')
   let fiber = (el as any)[fiberKey]?.return;
   let depth = 0;
   const seen = new Set<string>();
@@ -360,76 +391,7 @@ function getReactComponentHierarchy(el: Element): string | null {
   }
 
   const tag = el.tagName.toLowerCase();
-  return names.length > 0 ? `${tag} (${names.join(' > ')})` : null;
-}
-
-function getVueComponentHierarchy(el: Element): string | null {
-  let instance = (el as any).__vueParentComponent;
-  if (!instance) return null;
-
-  const names: string[] = [];
-  let current = instance;
-  const seen = new Set<string>();
-
-  while (current) {
-    const name: string | undefined = current.type?.name || current.type?.__name;
-    if (name && !seen.has(name) && !name.startsWith('_')) {
-      names.unshift(name);
-      seen.add(name);
-    }
-    current = current.parent;
-  }
-
-  const tag = el.tagName.toLowerCase();
-  return names.length > 0 ? `${tag} (${names.join(' > ')})` : null;
-}
-
-function getAngularComponentHierarchy(el: Element): string | null {
-  const ng = (window as any).ng;
-  if (!ng) return null;
-  const getOwning: ((el: Element) => any) | undefined = ng.getOwningComponent ?? ng.getComponent;
-  if (!getOwning) return null;
-
-  const names: string[] = [];
-  let current: Element | null = el;
-  const seen = new Set<string>();
-
-  while (current && current !== document.documentElement) {
-    try {
-      const comp = getOwning(current);
-      if (comp) {
-        const name: string | undefined = comp.constructor?.name;
-        if (name && name !== 'Object' && !seen.has(name)) {
-          names.unshift(name);
-          seen.add(name);
-        }
-      }
-    } catch {}
-    current = current.parentElement;
-  }
-
-  const tag = el.tagName.toLowerCase();
-  return names.length > 0 ? `${tag} (${names.join(' > ')})` : null;
-}
-
-function getComponentHierarchy(el: Element): string | null {
-  return getReactComponentHierarchy(el) ?? getVueComponentHierarchy(el) ?? getAngularComponentHierarchy(el);
-}
-
-// -------- shadow-DOM-aware closest --------
-
-function closestAcrossShadow(el: Element | null, selector: string): Element | null {
-  let current: Element | null = el;
-  while (current) {
-    if (current.matches(selector)) return current;
-    if (current.parentElement) {
-      current = current.parentElement;
-    } else {
-      const root = current.getRootNode();
-      current = root instanceof ShadowRoot ? root.host : null;
-    }
-  }
-  return null;
+  return names.length > 0 ? `${tag} (${names.join(' > ')})` : tag;
 }
 
 function captureContext(el: HTMLElement, _e: MouseEvent): ElementContext {
@@ -457,7 +419,7 @@ function captureContext(el: HTMLElement, _e: MouseEvent): ElementContext {
     xpath: getXPath(el),
     container: enrichContainer(el),
     pageTitle: document.title,
-    componentHierarchy: getComponentHierarchy(el),
+    componentHierarchy: getReactComponentHierarchy(el),
     columnIndex: null,
   };
 }
@@ -490,6 +452,9 @@ function connectReloadListener(): void {
 
 function dispatchFixTask(ctx: ElementContext, userPrompt: string): string {
   const id = Math.random().toString(36).slice(2, 10);
+  undoStack.push(id);
+  saveUndoStack();
+  updateUndoBtnState();
 
   showGeneratingOverlay(id, ctx.boundingRect);
 
@@ -533,6 +498,17 @@ function dispatchFixTask(ctx: ElementContext, userPrompt: string): string {
   return id;
 }
 
+function dispatchUndoCommand(): void {
+  const targetTaskId = undoStack.pop();
+  saveUndoStack();
+  updateUndoBtnState();
+  const id = Math.random().toString(36).slice(2, 10);
+  const payload = { id, type: 'undo', targetTaskId };
+  const ws = new WebSocket('ws://localhost:7332');
+  ws.onopen = () => { ws.send(`UNDO: ${JSON.stringify(payload)}`); ws.close(); };
+  ws.onerror = () => { console.error('[Frontloop] undo: monitor not reachable'); };
+}
+
 // -------- DOMInspector class --------
 
 class DOMInspector {
@@ -541,8 +517,10 @@ class DOMInspector {
   private inspectBtn: HTMLElement;
   private container: HTMLElement;
   private panel: HTMLElement | null = null;
+  private onCapture: OnCapture;
 
-  constructor(inspectBtn: HTMLElement, container: HTMLElement) {
+  constructor(onCapture: OnCapture, inspectBtn: HTMLElement, container: HTMLElement) {
+    this.onCapture = onCapture;
     this.inspectBtn = inspectBtn;
     this.container = container;
     this.highlight = this.createHighlight();
@@ -603,7 +581,7 @@ class DOMInspector {
     if (el.closest('#__frontloop_highlight__') || el.closest('#__frontloop_panel__') || el.closest('#__frontloop_speed_dial__')) return;
 
     // Hovering over a table header — highlight the entire column
-    const th = closestAcrossShadow(el, 'th');
+    const th = el.closest('th');
     if (th) {
       this.highlightTableColumn(th as HTMLTableCellElement);
       return;
@@ -612,15 +590,15 @@ class DOMInspector {
     const rect = el.getBoundingClientRect();
     Object.assign(this.highlight.style, {
       display: 'block',
-      top: `${rect.top}px`,
-      left: `${rect.left}px`,
+      top: `${rect.top + window.scrollY}px`,
+      left: `${rect.left + window.scrollX}px`,
       width: `${rect.width}px`,
       height: `${rect.height}px`,
     });
   };
 
   private getColumnBoundingRect(th: HTMLTableCellElement): { top: number; left: number; width: number; height: number } | null {
-    const table = closestAcrossShadow(th, 'table');
+    const table = th.closest('table');
     if (!table) return null;
 
     const index = th.cellIndex;
@@ -652,15 +630,15 @@ class DOMInspector {
 
     Object.assign(this.highlight.style, {
       display: 'block',
-      top: `${colRect.top}px`,
-      left: `${colRect.left}px`,
+      top: `${colRect.top + window.scrollY}px`,
+      left: `${colRect.left + window.scrollX}px`,
       width: `${colRect.width}px`,
       height: `${colRect.height}px`,
     });
   }
 
   private enrichContainerWithColumn(th: HTMLTableCellElement, ctx: ElementContext): void {
-    const table = closestAcrossShadow(th, 'table');
+    const table = th.closest('table');
     if (!table) return;
     const index = th.cellIndex;
     const rows = Array.from(table.querySelectorAll(':scope > thead tr, :scope > tbody tr, :scope > tfoot tr'));
@@ -706,7 +684,7 @@ class DOMInspector {
 
     // Pin highlight at the captured element's position
     // If a table header was clicked, highlight the entire column instead
-    const clickedTh = closestAcrossShadow(el, 'th') as HTMLTableCellElement | null;
+    const clickedTh = el.closest('th') as HTMLTableCellElement | null;
     if (clickedTh) {
       this.highlightTableColumn(clickedTh);
       this.enrichContainerWithColumn(clickedTh, ctx);
@@ -714,7 +692,7 @@ class DOMInspector {
       if (colRect) ctx.boundingRect = colRect;
       ctx.columnIndex = clickedTh.cellIndex;
       // Generate a column-wide selector covering both header and body cells
-      const table = closestAcrossShadow(clickedTh, 'table');
+      const table = clickedTh.closest('table');
       if (table) {
         const tableSelector = findSelector(table);
         ctx.selector = `${tableSelector} th:nth-child(${ctx.columnIndex + 1}), ${tableSelector} td:nth-child(${ctx.columnIndex + 1})`;
@@ -722,8 +700,8 @@ class DOMInspector {
     } else {
       Object.assign(this.highlight.style, {
         display: 'block',
-        top: `${ctx.boundingRect.top}px`,
-        left: `${ctx.boundingRect.left}px`,
+        top: `${ctx.boundingRect.top + window.scrollY}px`,
+        left: `${ctx.boundingRect.left + window.scrollX}px`,
         width: `${ctx.boundingRect.width}px`,
         height: `${ctx.boundingRect.height}px`,
       });
@@ -771,9 +749,8 @@ class DOMInspector {
       justifyContent: 'space-between',
       alignItems: 'center',
     });
-    const titleSpan = document.createElement('span');
-    titleSpan.textContent = `Frontloop — ${ctx.tagName}${ctx.componentHierarchy ? ` — ${ctx.componentHierarchy}` : ''}`;
-    header.appendChild(titleSpan);
+    const compLabel = ctx.componentHierarchy ? ` — ${ctx.componentHierarchy}` : '';
+    header.innerHTML = `<span>FRONTLOOP — ${ctx.tagName}${compLabel}</span>`;
 
     const closeBtn = document.createElement('span');
     closeBtn.textContent = '✕';
@@ -849,7 +826,6 @@ class DOMInspector {
       if (!text) return;
       dispatchFixTask(ctx, text);
       this.removePanel();
-      this.highlight.style.display = 'none';
     };
 
     row.appendChild(cancelBtn);
@@ -879,15 +855,34 @@ interface SpeedDialElements {
   mainFab: HTMLElement;
   inspectBtn: HTMLElement;
   sshotBtn: HTMLElement;
+  undoBtn: HTMLElement;
 }
 
-function createSpeedDial(onInspect: () => void, onScreenshot: () => void): SpeedDialElements {
+function createSpeedDial(onInspect: () => void, onScreenshot: () => void, onUndo: () => void): SpeedDialElements {
   const container = document.createElement('div');
   container.id = '__frontloop_speed_dial__';
 
   // Items wrapper — absolutely positioned to the left of the FAB
   const itemsWrapper = document.createElement('div');
   itemsWrapper.id = '__frontloop_dial_items__';
+
+  // Undo item
+  const undoItem = document.createElement('div');
+  undoItem.className = '__frontloop_dial_item';
+  const undoLabel = document.createElement('span');
+  undoLabel.className = '__frontloop_dial_label';
+  undoLabel.textContent = 'Undo';
+  const undoBtn = document.createElement('div');
+  undoBtn.id = '__frontloop_undo_btn__';
+  undoBtn.className = '__frontloop_dial_circle';
+  undoBtn.style.background = '#3a3a5a';
+  undoBtn.style.opacity = '0.4';
+  undoBtn.style.cursor = 'default';
+  undoBtn.textContent = '↩';
+  undoBtn.title = 'Nothing to undo';
+  undoBtn.addEventListener('click', (e) => { e.stopPropagation(); onUndo(); });
+  undoItem.appendChild(undoLabel);
+  undoItem.appendChild(undoBtn);
 
   // Screenshot item
   const sshotItem = document.createElement('div');
@@ -921,6 +916,7 @@ function createSpeedDial(onInspect: () => void, onScreenshot: () => void): Speed
   inspectItem.appendChild(inspectLabel);
   inspectItem.appendChild(inspectBtn);
 
+  itemsWrapper.appendChild(undoItem);
   itemsWrapper.appendChild(sshotItem);
   itemsWrapper.appendChild(inspectItem);
 
@@ -966,7 +962,7 @@ function createSpeedDial(onInspect: () => void, onScreenshot: () => void): Speed
   itemsWrapper.addEventListener('mouseenter', openDial);
   itemsWrapper.addEventListener('mouseleave', closeDial);
 
-  return { container, mainFab, inspectBtn, sshotBtn };
+  return { container, mainFab, inspectBtn, sshotBtn, undoBtn };
 }
 
 // -------- screenshot capture --------
@@ -1018,7 +1014,7 @@ async function captureElementToDataUrl(el: HTMLElement, cropViewportRect?: { top
 
   const svgStr = new XMLSerializer().serializeToString(svg);
 
-  return new Promise<string>((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
@@ -1115,9 +1111,7 @@ function showScreenshotPanel(
     justifyContent: 'space-between',
     alignItems: 'center',
   });
-  const titleSpan = document.createElement('span');
-  titleSpan.textContent = `SCREENSHOT — ${ctx.tagName}`;
-  header.appendChild(titleSpan);
+  header.innerHTML = '<span>SCREENSHOT — ' + ctx.tagName + '</span>';
   const closeBtn = document.createElement('span');
   closeBtn.textContent = '✕';
   closeBtn.style.cursor = 'pointer';
@@ -1247,7 +1241,7 @@ export function setupDomInspector(): DOMInspector | null {
   let sshotDragOverlay: HTMLElement | null = null;
   let sshotDragStart: { x: number; y: number } | null = null;
 
-  const { container, inspectBtn, sshotBtn } = createSpeedDial(
+  const { container, inspectBtn, sshotBtn, undoBtn } = createSpeedDial(
     () => { if (!inspector.isActive()) inspector.activate(); },
     () => {
       if (sshotActive) return;
@@ -1260,12 +1254,15 @@ export function setupDomInspector(): DOMInspector | null {
       document.addEventListener('mousemove', sshotOnMouseMove, true);
       document.addEventListener('mouseup', sshotOnMouseUp, true);
       document.addEventListener('keydown', sshotOnKey, true);
-    }
+    },
+    () => { if (undoStack.length > 0) dispatchUndoCommand(); }
   );
+  _undoBtn = undoBtn;
+  updateUndoBtnState();
   document.body.appendChild(container);
   _speedDialContainer = container;
 
-  let inspector: DOMInspector = new DOMInspector(inspectBtn, container);
+  let inspector: DOMInspector = new DOMInspector(() => {}, inspectBtn, container);
 
   function removeDragOverlay(): void {
     if (sshotDragOverlay) { sshotDragOverlay.remove(); sshotDragOverlay = null; }
@@ -1295,8 +1292,8 @@ export function setupDomInspector(): DOMInspector | null {
     const height = Math.abs(y2 - y1);
     Object.assign(sshotDragOverlay.style, {
       display: width > 2 || height > 2 ? 'block' : 'none',
-      top: `${top}px`,
-      left: `${left}px`,
+      top: `${top + window.scrollY}px`,
+      left: `${left + window.scrollX}px`,
       width: `${width}px`,
       height: `${height}px`,
     });
@@ -1409,6 +1406,9 @@ export function setupDomInspector(): DOMInspector | null {
             loadingOverlay.remove();
 
             const id = Math.random().toString(36).slice(2, 10);
+            undoStack.push(id);
+            saveUndoStack();
+            updateUndoBtnState();
             showGeneratingOverlay(id, ctx.boundingRect);
 
             const payload: any = {
@@ -1430,14 +1430,13 @@ export function setupDomInspector(): DOMInspector | null {
             };
             if (screenshotPath) payload.screenshotPath = screenshotPath;
 
-            let sshotCompleted = false;
             const ws = new WebSocket('ws://localhost:7332');
             ws.onopen = () => { ws.send(`TASK: ${JSON.stringify(payload)}`); };
             ws.onmessage = (event) => {
-              if (event.data === `COMPLETE:${id}`) { sshotCompleted = true; removeGeneratingOverlay(id); ws.close(); }
+              if (event.data === `COMPLETE:${id}`) { removeGeneratingOverlay(id); ws.close(); }
             };
             ws.onerror = () => { removeGeneratingOverlay(id); };
-            ws.onclose = () => { if (!sshotCompleted) setTimeout(() => removeGeneratingOverlay(id), 120000); };
+            ws.onclose = () => { setTimeout(() => removeGeneratingOverlay(id), 120000); };
 
             cleanupScreenshotMode();
           }
