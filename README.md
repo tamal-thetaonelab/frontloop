@@ -6,7 +6,7 @@
 <div align="center">
 <div style="font-size: 24px;"><span style="color: #ff6b35;">Frontend iteration,</span> in the browser, with any coding agent.</div>
   <br/> 
-  Frontloop instruments your running dev app in the browser. Click any element, describe the change, and structured DOM context — selector, computed styles, React/Angular component hierarchy, and page URL - streams to your coding agent over WebSocket. The agent edits the real source file. Hot reload delivers the result.
+  Frontloop instruments your frontend application. Run it in development mode in the browser. Click any element, describe the change, and structured DOM context — selector, computed styles, React/Angular component hierarchy, and page URL - streams to your coding agent over WebSocket. The agent edits the real source file. Hot reload delivers the result.
 
   Works with Claude Code today. Cursor, Copilot Workspace, Gemini CLI, and Windsurf are on the roadmap.
 </div>
@@ -77,7 +77,8 @@ Not a CSS override. A real source edit with full codebase context.
 - Loader clears, HMR delivers the change. If HMR can potentially not work, a reload signal is sent instead.
 
 **Framework support:** 
-- ✅ React
+- ✅ React (Vite)
+- ✅ React (CRA)
 - ✅ Next.js
 - ✅ Angular
 - 🚧 Vue 3 / Nuxt
@@ -105,7 +106,7 @@ Not a CSS override. A real source edit with full codebase context.
 
 ## Roadmap
 
-### 🚧 Undo support *(in development)*
+### 🚧 Undo (Ctrl+z) support *(in development)*
 Implementing undo functionality for UI changes made through the `live-ui-generation` skill. This will allow users to easily revert changes if the result is not as expected, providing a safety net and encouraging experimentation.
 
 ### 🚧 `mock-setup` *(in development)*

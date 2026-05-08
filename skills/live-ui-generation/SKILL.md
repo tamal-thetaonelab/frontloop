@@ -18,23 +18,24 @@ Browser ──WS──▶ ws-task-server (stdout) ──▶ Claude reads TASK, a
   └──────────── HTTP POST /complete/<id> ◀────────────────┘
 ```
 
-**FAB behaviour:** Single orange ⋞ at bottom-right. Hover reveals two labelled circles to its left. FAB hides entirely while any operation is active (inspect mode, screenshot mode, generating). Escape restores it. Safety: inspector activates only when `NODE_ENV=development`.
+**FAB behaviour:** Single orange ⋞ at bottom-right. Hover reveals two labelled circles to its left. FAB hides entirely while any operation is active (inspect mode, screenshot mode, generating). Escape restores it. Safety: inspector activates only when `NODE_ENV=development` / `import.meta.env.DEV`.
 
 ## Architecture
 
 | Component | File | Role |
 |-----------|------|------|
-| WS + HTTP server | `<repo-root>/ws-task-server.js` | WS 7332, HTTP completion + reload + screenshot on 7333 |
+| WS + HTTP server | `<repo-root>/ws-task-server.<server-ext>` | WS 7332, HTTP completion + reload + screenshot on 7333 |
 | DOM Inspector | `<frontend>/src/mocks/dom-inspector.ts` | Speed dial FAB, hover highlight, canvas capture, shimmer overlay, WS dispatch |
 | Provider wiring | `<frontend>/src/lib/LiveUIProvider.tsx` | Calls `setupDomInspector()` once in dev mode |
 
 Resolve placeholders before setup:
 - **`<repo-root>`** — `git rev-parse --show-toplevel` or dir with `.git/` + `package.json`
 - **`<frontend>`** — dir with `src/` + `package.json` containing a dev server script
+- **`<server-ext>`** — `.js` if `package.json` has no `"type": "module"`, otherwise `.cjs` (because the server uses CommonJS `require()`)
 
 ## Monitoring
 
-The **Monitor tool** spawns a persistent background process. `ws-task-server.js` emits `console.log` lines like `TASK: {...}` — each line arrives as a real-time notification. **Do not use bash** (ephemeral, can't host persistent WS). See [reference/server-code.md](reference/server-code.md) for the full server template.
+The **Monitor tool** spawns a persistent background process. `ws-task-server.<server-ext>` emits `console.log` lines like `TASK: {...}` — each line arrives as a real-time notification. **Do not use bash** (ephemeral, can't host persistent WS). See [reference/server-code.md](reference/server-code.md) for the full server template.
 
 ## Setup
 
@@ -44,11 +45,11 @@ Claude handles steps 1–5. **Step 6 (dev server) must be started by the user.**
 `<repo-root>` and `<frontend>` (rules above).
 
 ### Step 2 — ws-task-server.js
-Create `<repo-root>/ws-task-server.js` from [reference/server-code.md](reference/server-code.md). The `ws` module is a transitive dependency in `<frontend>/node_modules/ws` — do not install separately.
+Check if `package.json` has `"type": "module"` — if so, the file must be named `ws-task-server.cjs` (CommonJS `require()` won't work in `.js` with `"type": "module"`). Create the file from [reference/server-code.md](reference/server-code.md). If `ws` is not a transitive dependency, install it: `npm install --save-dev ws`.
 
 ### Step 3 — Start server with Monitor
 ```sh
-NODE_PATH=<frontend>/node_modules node <repo-root>/ws-task-server.js
+NODE_PATH=<frontend>/node_modules node <repo-root>/ws-task-server.<server-ext>
 ```
 Verify: `lsof -i :7332 | grep LISTEN && lsof -i :7333 | grep LISTEN`. Expect `ws-task-server: WS on 7332, HTTP on 7333`.
 
@@ -64,9 +65,27 @@ Key exports and guarantees:
 
 ### Step 5 — Provider wiring
 frontloop
-`setupDomInspector()` must be called **exactly once** after the DOM is ready, guarded by `NODE_ENV === 'development'`. The function itself is idempotent but double-calling from two entry points (e.g. entry script + framework provider) creates duplicate DOM elements — guard at the call site too.
+`setupDomInspector()` must be called **exactly once** after the DOM is ready, guarded by a development-mode check. The function itself is idempotent but double-calling from two entry points (e.g. entry script + framework provider) creates duplicate DOM elements — guard at the call site too.
 
-**React (CRA / Vite / CRACO):**
+**Vite (React/Vue/Svelte):** Use `import.meta.env.DEV` — Vite replaces this at build time.
+```tsx
+// src/lib/LiveUIProvider.tsx
+import React, { useEffect } from 'react';
+
+export default function LiveUIProvider({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      import('../mocks/dom-inspector').then(({ setupDomInspector }) => {
+        setupDomInspector();
+      });
+    }
+  }, []);
+  return <>{children}</>;
+}
+```
+Wire in `App.tsx` wrapping `<Router>` children.
+
+**CRA / CRACO:** Uses `process.env.NODE_ENV` (webpack DefinePlugin).
 ```tsx
 // src/lib/LiveUIProvider.tsx
 import React, { useEffect } from 'react';
@@ -81,7 +100,7 @@ export default function LiveUIProvider({ children }: { children: React.ReactNode
   return <>{children}</>;
 }
 ```
-Wire in `App.tsx` wrapping `<Router>` children. **Do not also call `setupDomInspector()` from the entry file** (e.g. `main.tsx`, `mock-main.tsx`) — that creates two instances.
+**Do not call `setupDomInspector()` from the entry file** (e.g. `main.tsx`, `mock-main.tsx`) — only from the provider. Calling from both creates duplicate FABs.
 
 **Next.js (App Router):**
 ```tsx
@@ -99,6 +118,7 @@ export default function LiveUIProvider({ children }: { children: React.ReactNode
   return <>{children}</>;
 }
 ```
+Note: Next.js uses `process.env.NODE_ENV` (replaced at build time).
 Wire inside `<body>` in `layout.tsx`.
 
 **Vue 3:**
@@ -126,7 +146,8 @@ if (!environment.production) {
 
 **Vanilla JS/TS (no framework):**
 ```ts
-if (process.env.NODE_ENV === 'development') {
+// Use import.meta.env.DEV for Vite, process.env.NODE_ENV for webpack/CRA
+if (import.meta.env.DEV || process.env.NODE_ENV === 'development') {
   import('./mocks/dom-inspector').then(({ setupDomInspector }) => setupDomInspector());
 }
 ```
@@ -235,5 +256,7 @@ Monitor delivers the TASK line. **Verify required fields** (see Payload Schema b
 | CRA: `'use client'` or `@/` alias | CRA needs neither. Use relative `../` paths |
 | Server `MODULE_NOT_FOUND` | `NODE_PATH` must point to `<frontend>/node_modules`, not repo root |
 | `WebSocketServer is not a constructor` | v7 exports `Server`. Code handles both: `wsModule.WebSocketServer \|\| wsModule.Server` |
+| `require is not defined in ES module scope` | `package.json` has `"type": "module"`. Rename server file to `.cjs` to force CommonJS |
+| `import.meta.env.DEV` not working in CRA | CRA uses `process.env.NODE_ENV`, not `import.meta.env`. Use the CRA-specific template |
 | Calling `setupDomInspector()` from both entry file and provider | Creates two FABs — one hides, the other stays visible. Call from ONE place only (prefer the framework provider). The function returns `null` if already initialised as a safety net. |
 | Reconstructing dom-inspector.ts from memory | Always copy from [reference/dom-inspector.ts](reference/dom-inspector.ts). The hover logic and hide/restore coordination are subtle — recreating from scratch reintroduces solved bugs. |

@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Frontloop — Visual prompting for frontend development</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --orange: #ff6b35;
+      --orange-dim: #ff6b3520;
+      --orange-glow: #ff6b3540;
+      --bg: #0a0a0f;
+      --bg-card: #111118;
+      --bg-card2: #16161f;
+      --border: #ffffff12;
+      --border-bright: #ffffff22;
+      --text: #e8e8f0;
+      --muted: #6b6b80;
+      --muted2: #9898b0;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 40px;
+      background: #0a0a0fcc;
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      text-decoration: none;
+    }
+    .nav-logo img { height: 32px; width: auto; object-fit: contain; }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      list-style: none;
+    }
+    .nav-links a {
+      color: var(--muted2);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color .2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+
+    .nav-cta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all .2s;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-ghost {
+      color: var(--muted2);
+      background: transparent;
+      border: 1px solid var(--border-bright);
+    }
+    .btn-ghost:hover { color: var(--text); border-color: var(--border-bright); background: var(--bg-card); }
+    .btn-primary {
+      background: var(--orange);
+      color: #fff;
+      box-shadow: 0 0 24px var(--orange-glow);
+    }
+    .btn-primary:hover { background: #ff7d4d; box-shadow: 0 0 32px #ff6b3560; transform: translateY(-1px); }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 120px 24px 80px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-glow {
+      position: absolute;
+      top: 10%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 400px;
+      background: radial-gradient(ellipse at center, #ff6b3514 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 40%, black 30%, transparent 100%);
+      pointer-events: none;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: var(--orange-dim);
+      border: 1px solid var(--orange);
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--orange);
+      margin-bottom: 28px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .badge-dot {
+      width: 6px; height: 6px;
+      background: var(--orange);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.3); }
+    }
+
+    h1 {
+      font-size: clamp(40px, 6vw, 80px);
+      font-weight: 900;
+      line-height: 1.05;
+      letter-spacing: -2px;
+      margin-bottom: 24px;
+      max-width: 860px;
+    }
+    h1 .accent { color: var(--orange); }
+
+    .hero-sub {
+      font-size: clamp(16px, 2vw, 20px);
+      color: var(--muted2);
+      max-width: 560px;
+      margin-bottom: 48px;
+      line-height: 1.7;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 72px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .install-cmd {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-bright);
+      border-radius: 10px;
+      padding: 14px 20px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--muted2);
+      margin-bottom: 72px;
+    }
+    .install-cmd .cmd-prompt { color: var(--orange); }
+    .install-cmd .cmd-text { color: var(--text); }
+    .copy-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      border-radius: 4px;
+      transition: color .2s, background .2s;
+    }
+    .copy-btn:hover { color: var(--text); background: var(--border); }
+
+    /* ── DEMO GIF ── */
+    .hero-demo {
+      position: relative;
+      width: 100%;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .demo-frame {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border-bright);
+      box-shadow: 0 0 0 1px var(--border), 0 80px 120px #00000080, 0 0 60px #ff6b3514;
+    }
+    .demo-frame img {
+      width: 100%;
+      display: block;
+    }
+    .demo-frame-bar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 36px;
+      background: #1a1a24;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 7px;
+    }
+    .dot { width: 11px; height: 11px; border-radius: 50%; }
+    .dot-r { background: #ff5f57; }
+    .dot-y { background: #febc2e; }
+    .dot-g { background: #28c840; }
+
+    /* ── SECTION COMMON ── */
+    section { padding: 100px 24px; }
+    .section-inner { max-width: 1100px; margin: 0 auto; }
+    .section-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--orange);
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-size: clamp(28px, 4vw, 48px);
+      font-weight: 800;
+      letter-spacing: -1px;
+      line-height: 1.15;
+      margin-bottom: 16px;
+    }
+    .section-sub {
+      color: var(--muted2);
+      font-size: 17px;
+      max-width: 560px;
+      line-height: 1.7;
+    }
+
+    /* ── WHY GRID ── */
+    .why-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1px;
+      background: var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      margin-top: 64px;
+    }
+    .why-card {
+      background: var(--bg-card);
+      padding: 36px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      transition: background .2s;
+    }
+    .why-card:hover { background: var(--bg-card2); }
+    .why-icon {
+      width: 44px; height: 44px;
+      background: var(--orange-dim);
+      border: 1px solid var(--orange-glow);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+    .why-card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+    .why-card p { color: var(--muted2); font-size: 14px; line-height: 1.7; }
+
+    /* ── HOW IT WORKS ── */
+    .how-section { background: var(--bg-card); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0;
+      margin-top: 64px;
+      position: relative;
+    }
+
+    .step {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 32px 28px;
+      position: relative;
+    }
+    .step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      right: 0; top: 50%; transform: translateY(-50%);
+      width: 1px; height: 60%;
+      background: var(--border);
+    }
+
+    .step-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--orange);
+      letter-spacing: 1px;
+    }
+    .step-icon { font-size: 28px; margin: 4px 0; }
+    .step h3 { font-size: 16px; font-weight: 700; }
+    .step p { color: var(--muted2); font-size: 13px; line-height: 1.65; }
+
+    /* ── PAYLOAD ── */
+    .payload-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
+      margin-top: 64px;
+    }
+    @media (max-width: 768px) { .payload-section { grid-template-columns: 1fr; } }
+
+    .code-block {
+      background: var(--bg-card);
+      border: 1px solid var(--border-bright);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .code-block-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .code-block-lang {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted2);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    pre {
+      padding: 20px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      line-height: 1.7;
+      color: #c9d1d9;
+    }
+    .json-key { color: #79b8ff; }
+    .json-str { color: #9ecbff; }
+    .json-num { color: #f8c555; }
+    .json-punc { color: var(--muted2); }
+
+    /* ── FRAMEWORKS ── */
+    .frameworks {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 48px;
+    }
+    .fw-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 18px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-bright);
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all .2s;
+    }
+    .fw-badge:hover { border-color: var(--orange-glow); background: var(--orange-dim); }
+    .fw-badge.wip { opacity: 0.5; }
+    .fw-badge .status { font-size: 11px; color: var(--orange); background: var(--orange-dim); padding: 2px 6px; border-radius: 4px; }
+    .fw-badge.wip .status { color: var(--muted); background: var(--border); }
+
+    /* ── INSTALL CTA ── */
+    .install-section {
+      background: radial-gradient(ellipse 80% 60% at 50% 50%, #ff6b3510 0%, transparent 70%);
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+    .install-steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 20px;
+      margin-top: 56px;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .install-step {
+      background: var(--bg-card);
+      border: 1px solid var(--border-bright);
+      border-radius: 12px;
+      padding: 28px 24px;
+      text-align: left;
+    }
+    .install-step-num {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--orange);
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+    .install-step code {
+      display: block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-top: 12px;
+    }
+    .install-step p { color: var(--muted2); font-size: 13px; margin-top: 8px; }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .footer-brand {
+      display: flex;
+      align-items: center;
+    }
+    .footer-brand img { height: 26px; width: auto; }
+    footer p { color: var(--muted); font-size: 13px; }
+    .footer-links {
+      display: flex;
+      gap: 24px;
+      list-style: none;
+    }
+    .footer-links a { color: var(--muted); font-size: 13px; text-decoration: none; transition: color .2s; }
+    .footer-links a:hover { color: var(--text); }
+
+    /* ── ANIMATIONS ── */
+    .fade-up {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity .6s, transform .6s;
+    }
+    .fade-up.visible {
+      opacity: 1;
+      transform: none;
+    }
+
+    /* ── SHIMMER EFFECT ── */
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .shimmer-text {
+      background: linear-gradient(90deg, var(--orange) 0%, #ffb347 40%, var(--orange) 80%);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 3s linear infinite;
+    }
+
+    /* ── SCROLLBAR ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
+
+    /* ── MOBILE ── */
+    @media (max-width: 768px) {
+      nav {
+        padding: 14px 20px;
+      }
+      .nav-links { display: none; }
+      .nav-cta .btn-ghost { display: none; }
+
+      .hero { padding: 100px 20px 60px; }
+
+      h1 {
+        font-size: clamp(36px, 10vw, 56px);
+        letter-spacing: -1.5px;
+      }
+
+      .install-cmd {
+        flex-wrap: wrap;
+        font-size: 11px;
+        padding: 12px 14px;
+        gap: 8px;
+      }
+      .install-cmd .cmd-text { word-break: break-all; }
+
+      .hero-actions { gap: 12px; }
+      .hero-actions .btn { padding: 11px 20px !important; font-size: 14px !important; }
+
+      section { padding: 64px 20px; }
+
+      .why-grid { grid-template-columns: 1fr; }
+      .why-card { padding: 28px 22px; }
+
+      .steps { grid-template-columns: 1fr 1fr; }
+      .step:not(:last-child)::after { display: none; }
+      .step { padding: 24px 20px; border-bottom: 1px solid var(--border); }
+      .steps .step:nth-last-child(-n+2) { border-bottom: none; }
+
+      .payload-section { grid-template-columns: 1fr; gap: 32px; }
+
+      pre { font-size: 11px; padding: 14px; }
+
+      .install-steps { grid-template-columns: 1fr; }
+      .install-step code { font-size: 11px; word-break: break-all; }
+
+      footer {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 20px;
+        padding: 32px 20px;
+      }
+      .footer-links { gap: 16px; }
+    }
+
+    @media (max-width: 480px) {
+      .steps { grid-template-columns: 1fr; }
+      .steps .step:nth-last-child(-n+2) { border-bottom: 1px solid var(--border); }
+      .steps .step:last-child { border-bottom: none; }
+
+      .hero-actions { flex-direction: column; width: 100%; }
+      .hero-actions .btn { width: 100%; justify-content: center; }
+
+      .badge { font-size: 10px; padding: 5px 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="#" class="nav-logo">
+    <img src="frontloop-logo.png" alt="Frontloop" />
+  </a>
+  <ul class="nav-links">
+    <li><a href="#why">Why</a></li>
+    <li><a href="#how">How it works</a></li>
+    <li><a href="#payload">Context</a></li>
+    <li><a href="#install">Install</a></li>
+  </ul>
+  <div class="nav-cta">
+    <a href="https://github.com/tamal-thetaonelab/frontloop" class="btn btn-ghost" target="_blank">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+      GitHub
+    </a>
+    <a href="#install" class="btn btn-primary">Get Started</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-grid"></div>
+
+  <div class="badge">
+    <span class="badge-dot"></span>
+    Claude Code Plugin · Now Available
+  </div>
+
+  <h1>
+    <span class="shimmer-text">Visual prompting</span><br/>
+    for frontend<br/>
+    development
+  </h1>
+
+  <p class="hero-sub">
+    Select any element. Describe what you want. Your agent gets the full DOM context — selector, styles, hierarchy — and edits the source directly.
+  </p>
+
+  <div class="hero-actions">
+    <a href="#install" class="btn btn-primary" style="padding: 13px 28px; font-size: 15px;">
+      Install Plugin
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </a>
+    <a href="#how" class="btn btn-ghost" style="padding: 13px 28px; font-size: 15px;">See how it works</a>
+  </div>
+
+  <div class="install-cmd">
+    <span class="cmd-prompt">/plugin</span>
+    <span class="cmd-text">marketplace add tamal-thetaonelab/frontloop</span>
+    <button class="copy-btn" onclick="navigator.clipboard.writeText('/plugin marketplace add tamal-thetaonelab/frontloop').then(() => { this.innerHTML = '✓'; setTimeout(() => this.innerHTML = `<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\'><rect x=\'9\' y=\'9\' width=\'13\' height=\'13\' rx=\'2\'/><path d=\'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\'/></svg>`, 2000) })">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+    </button>
+  </div>
+
+  <div class="hero-demo fade-up">
+    <div class="demo-frame">
+      <div class="demo-frame-bar">
+        <span class="dot dot-r"></span>
+        <span class="dot dot-y"></span>
+        <span class="dot dot-g"></span>
+      </div>
+      <img src="fl-gif.gif" alt="Frontloop demo" style="margin-top: 36px;" />
+    </div>
+  </div>
+</section>
+
+<!-- WHY -->
+<section id="why">
+  <div class="section-inner">
+    <div class="fade-up">
+      <div class="section-label">Why Frontloop</div>
+      <h2 class="section-title">Stop switching tabs.<br/>Start shipping faster.</h2>
+      <p class="section-sub">The current workflow for UI changes with AI agents is broken. Frontloop fixes it end-to-end.</p>
+    </div>
+
+    <div class="why-grid fade-up">
+      <div class="why-card">
+        <div class="why-icon">⚡</div>
+        <h3>No more context-switching</h3>
+        <p>Click the element you want to change — right in the browser. No more describing CSS selectors in text or hunting for class names in the IDE.</p>
+      </div>
+      <div class="why-card">
+        <div class="why-icon">🎯</div>
+        <h3>Token & time efficient</h3>
+        <p>Full DOM context — selector, outer HTML, computed styles, component hierarchy — means Claude makes precise edits in one shot. No grep loops.</p>
+      </div>
+      <div class="why-card">
+        <div class="why-icon">🔄</div>
+        <h3>Real edits, not overrides</h3>
+        <p>Claude edits the actual source file using full codebase context. Hot Module Replacement delivers the change instantly in your browser.</p>
+      </div>
+      <div class="why-card">
+        <div class="why-icon">🧩</div>
+        <h3>Framework aware</h3>
+        <p>Component hierarchy is extracted automatically. React, Next.js, Angular — Claude knows exactly which component owns the element.</p>
+      </div>
+      <div class="why-card">
+        <div class="why-icon">📸</div>
+        <h3>Two selection modes</h3>
+        <p>DOM element selector for precise single-element targeting, or screenshot selector to draw a box around any area and describe the change.</p>
+      </div>
+      <div class="why-card">
+        <div class="why-icon">✅</div>
+        <h3>Type-safe by default</h3>
+        <p>Claude runs a type check after every edit. If types break, it fixes before hot-reloading. No silent regressions shipped.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section id="how" class="how-section">
+  <div class="section-inner">
+    <div class="fade-up">
+      <div class="section-label">How it works</div>
+      <h2 class="section-title">Six steps from click to change</h2>
+      <p class="section-sub">A floating button lives in your browser during development. Everything else is automatic.</p>
+    </div>
+
+    <div class="steps fade-up">
+      <div class="step">
+        <div class="step-num">STEP 01</div>
+        <div class="step-icon">🔘</div>
+        <h3>FAB appears</h3>
+        <p>A floating action button is injected in dev mode. Hover to reveal DOM or screenshot selector modes.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">STEP 02</div>
+        <div class="step-icon">🖱️</div>
+        <h3>Select element</h3>
+        <p>Click an element to inspect it, or draw a box with screenshot selector to target any visual region.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">STEP 03</div>
+        <div class="step-icon">✏️</div>
+        <h3>Describe change</h3>
+        <p>Type your desired change. An orange shimmer animation appears over the element while Claude works.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">STEP 04</div>
+        <div class="step-icon">🔌</div>
+        <h3>WebSocket streams</h3>
+        <p>The full DOM payload is streamed to Claude Code in real-time via WebSocket — no polling.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">STEP 05</div>
+        <div class="step-icon">🤖</div>
+        <h3>Claude edits source</h3>
+        <p>Claude receives full context, edits the source file directly, and runs a type check to verify correctness.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">STEP 06</div>
+        <div class="step-icon">🚀</div>
+        <h3>HMR delivers</h3>
+        <p>The shimmer clears, HMR hot-reloads the change. If HMR won't catch it, a full reload signal is sent.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PAYLOAD -->
+<section id="payload">
+  <div class="section-inner">
+    <div class="payload-section">
+      <div class="fade-up">
+        <div class="section-label">Full DOM Context</div>
+        <h2 class="section-title">Claude sees exactly what you see</h2>
+        <p class="section-sub" style="margin-bottom: 28px;">Every task payload includes the complete context Claude needs to make a precise, one-shot edit without back-and-forth.</p>
+        <ul style="list-style: none; display: flex; flex-direction: column; gap: 12px;">
+          <li style="display: flex; gap: 10px; align-items: flex-start; color: var(--muted2); font-size: 14px;">
+            <span style="color: var(--orange); margin-top: 2px;">▸</span>
+            <span><strong style="color: var(--text);">Selector</strong> — the precise CSS path to the target element</span>
+          </li>
+          <li style="display: flex; gap: 10px; align-items: flex-start; color: var(--muted2); font-size: 14px;">
+            <span style="color: var(--orange); margin-top: 2px;">▸</span>
+            <span><strong style="color: var(--text);">Outer HTML</strong> — the actual markup of the element</span>
+          </li>
+          <li style="display: flex; gap: 10px; align-items: flex-start; color: var(--muted2); font-size: 14px;">
+            <span style="color: var(--orange); margin-top: 2px;">▸</span>
+            <span><strong style="color: var(--text);">Computed styles</strong> — live CSS values from the browser</span>
+          </li>
+          <li style="display: flex; gap: 10px; align-items: flex-start; color: var(--muted2); font-size: 14px;">
+            <span style="color: var(--orange); margin-top: 2px;">▸</span>
+            <span><strong style="color: var(--text);">Component hierarchy</strong> — React/Angular tree from element to root</span>
+          </li>
+          <li style="display: flex; gap: 10px; align-items: flex-start; color: var(--muted2); font-size: 14px;">
+            <span style="color: var(--orange); margin-top: 2px;">▸</span>
+            <span><strong style="color: var(--text);">Page context</strong> — current URL and page title</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="code-block fade-up">
+        <div class="code-block-header">
+          <div class="code-block-lang">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+            task.json
+          </div>
+          <span style="color: var(--orange); font-size: 11px; font-weight: 600;">LIVE PAYLOAD</span>
+        </div>
+        <pre><span class="json-punc">{</span>
+  <span class="json-key">"id"</span><span class="json-punc">:</span> <span class="json-str">"a3f9bc12"</span><span class="json-punc">,</span>
+  <span class="json-key">"type"</span><span class="json-punc">:</span> <span class="json-str">"dom-fix"</span><span class="json-punc">,</span>
+  <span class="json-key">"prompt"</span><span class="json-punc">:</span> <span class="json-str">"make this card background
+           light grey, 24px padding"</span><span class="json-punc">,</span>
+  <span class="json-key">"element"</span><span class="json-punc">:</span> <span class="json-punc">{</span>
+    <span class="json-key">"selector"</span><span class="json-punc">:</span> <span class="json-str">"#employee-card > div.header"</span><span class="json-punc">,</span>
+    <span class="json-key">"tag"</span><span class="json-punc">:</span> <span class="json-str">"div"</span><span class="json-punc">,</span>
+    <span class="json-key">"html"</span><span class="json-punc">:</span> <span class="json-str">"&lt;div class=\"header\"&gt;...&lt;/div&gt;"</span><span class="json-punc">,</span>
+    <span class="json-key">"styles"</span><span class="json-punc">:</span> <span class="json-punc">{</span>
+      <span class="json-key">"background"</span><span class="json-punc">:</span> <span class="json-str">"rgb(255,255,255)"</span><span class="json-punc">,</span>
+      <span class="json-key">"padding"</span><span class="json-punc">:</span> <span class="json-str">"16px"</span>
+    <span class="json-punc">},</span>
+    <span class="json-key">"componentHierarchy"</span><span class="json-punc">:</span>
+      <span class="json-str">"EmployeeCard (EmployeeList > AppRoot)"</span>
+  <span class="json-punc">},</span>
+  <span class="json-key">"pageTitle"</span><span class="json-punc">:</span> <span class="json-str">"Employees — MyApp"</span><span class="json-punc">,</span>
+  <span class="json-key">"page"</span><span class="json-punc">:</span> <span class="json-str">"http://localhost:4300/app/employee"</span>
+<span class="json-punc">}</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FRAMEWORKS -->
+<section style="padding-top: 0;">
+  <div class="section-inner">
+    <div class="fade-up">
+      <div class="section-label">Framework Support</div>
+      <h2 class="section-title">Works with your stack</h2>
+      <p class="section-sub">Full support for React and Angular today, with Vue and Svelte coming soon.</p>
+    </div>
+
+    <div class="frameworks fade-up">
+      <div class="fw-badge">
+        <span>⚛️</span> React
+        <span class="status">✓ Supported</span>
+      </div>
+      <div class="fw-badge">
+        <span>▲</span> Next.js
+        <span class="status">✓ Supported</span>
+      </div>
+      <div class="fw-badge">
+        <span>🅰️</span> Angular
+        <span class="status">✓ Supported</span>
+      </div>
+      <div class="fw-badge wip">
+        <span>💚</span> Vue 3 / Nuxt
+        <span class="status">Coming soon</span>
+      </div>
+      <div class="fw-badge wip">
+        <span>🧡</span> Svelte / SvelteKit
+        <span class="status">Coming soon</span>
+      </div>
+    </div>
+
+    <div style="margin-top: 48px;" class="fade-up">
+      <img src="side-by-side.png" alt="Side by side comparison" style="width:100%; border-radius: 12px; border: 1px solid var(--border-bright); box-shadow: 0 40px 80px #00000060;" />
+    </div>
+  </div>
+</section>
+
+<!-- INSTALL -->
+<section id="install" class="install-section">
+  <div class="section-inner">
+    <div class="fade-up">
+      <div class="section-label">Get Started</div>
+      <h2 class="section-title">Up in two commands</h2>
+      <p class="section-sub" style="margin: 0 auto;">Install the Frontloop plugin for Claude Code. Run your dev server. Invoke the skill. That's it.</p>
+    </div>
+
+    <div class="install-steps fade-up">
+      <div class="install-step">
+        <div class="install-step-num">STEP 01 — ADD TO MARKETPLACE</div>
+        <code>/plugin marketplace add tamal-thetaonelab/frontloop</code>
+        <p>Registers the plugin with Claude Code's plugin system.</p>
+      </div>
+      <div class="install-step">
+        <div class="install-step-num">STEP 02 — INSTALL</div>
+        <code>/plugin install frontloop</code>
+        <p>Installs the plugin and makes skills available in your session.</p>
+      </div>
+      <div class="install-step">
+        <div class="install-step-num">STEP 03 — USE THE SKILL</div>
+        <code>/live-ui-generation</code>
+        <p>Start your dev server first, then invoke the skill. The FAB appears in your browser.</p>
+      </div>
+    </div>
+
+    <div style="margin-top: 48px;" class="fade-up">
+      <p style="color: var(--muted); font-size: 13px; margin-bottom: 20px;">Requirements: Claude Code · Node.js 18+</p>
+      <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+        <a href="https://github.com/tamal-thetaonelab/frontloop" class="btn btn-primary" target="_blank" style="padding: 13px 28px; font-size: 15px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          View on GitHub
+        </a>
+        <a href="#how" class="btn btn-ghost" style="padding: 13px 28px; font-size: 15px;">See how it works</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-brand">
+    <img src="frontloop-logo.png" alt="Frontloop" />
+  </div>
+  <p>Visual prompting for frontend development.</p>
+  <ul class="footer-links">
+    <li><a href="https://github.com/tamal-thetaonelab/frontloop" target="_blank">GitHub</a></li>
+    <li><a href="#install">Install</a></li>
+    <li><a href="#how">Docs</a></li>
+  </ul>
+</footer>
+
+<script>
+  // Intersection observer for fade-up animations
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry, i) => {
+      if (entry.isIntersecting) {
+        setTimeout(() => entry.target.classList.add('visible'), i * 60);
+      }
+    });
+  }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+
+  // Stagger why-cards
+  document.querySelectorAll('.why-card').forEach((card, i) => {
+    card.style.transitionDelay = `${i * 60}ms`;
+  });
+
+  // Active nav link highlight
+  const sections = document.querySelectorAll('section[id]');
+  const navLinks = document.querySelectorAll('.nav-links a');
+  const navObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navLinks.forEach(a => a.style.color = '');
+        const active = document.querySelector(`.nav-links a[href="#${entry.target.id}"]`);
+        if (active) active.style.color = 'var(--orange)';
+      }
+    });
+  }, { threshold: 0.5 });
+  sections.forEach(s => navObserver.observe(s));
+</script>
+</body>
+</html>
