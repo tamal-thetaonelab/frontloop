@@ -1,6 +1,25 @@
 # Provider wiring — framework templates
 
-## React (CRA / Vite / CRACO) — primary
+## Vite (React / Vue / Svelte) — primary
+
+```tsx
+// src/lib/LiveUIProvider.tsx
+import React, { useEffect } from 'react';
+
+export default function LiveUIProvider({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    import('../mocks/dom-inspector').then(({ setupDomInspector }) => {
+      setupDomInspector();
+    });
+  }, []);
+  return <>{children}</>;
+}
+```
+
+Wire in `App.tsx` wrapping `<Router>` children. Use `import.meta.env.DEV` — Vite replaces this at build time.
+
+## React (CRA / CRACO)
 
 ```tsx
 // src/lib/LiveUIProvider.tsx
@@ -17,9 +36,7 @@ export default function LiveUIProvider({ children }: { children: React.ReactNode
 }
 ```
 
-Wire in `App.tsx` wrapping `<Router>` children.
-
-> **CRA/CRACO**: use `process.env.NODE_ENV`, not `import.meta.env.DEV`. Use relative `../` paths, not `@/` aliases.
+Wire in `App.tsx` wrapping `<Router>` children. Use relative `../` paths, not `@/` aliases.
 
 ## Next.js (App Router)
 
@@ -40,22 +57,6 @@ export default function LiveUIProvider({ children }: { children: React.ReactNode
 ```
 
 Wire inside `<body>` in `layout.tsx`.
-
-## Vue 3
-
-```ts
-// src/plugins/liveUI.ts
-export default {
-  install() {
-    if (import.meta.env.DEV) {
-      import('../mocks/dom-inspector').then(({ setupDomInspector }) => {
-        setupDomInspector();
-      });
-    }
-  },
-};
-// main.ts: app.use(liveUIPlugin)
-```
 
 ## Angular
 

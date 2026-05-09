@@ -22,7 +22,7 @@ Browser ──WS──▶ ws-task-server (stdout) ──▶ Claude reads UNDO, r
   (fire-and-forget — no COMPLETE response)
 ```
 
-**FAB:** Fixed bottom-right. Hover reveals three circles (left→right): **↩ Undo** (grey/red), **[] Screenshot** (indigo), **✛ Inspect** (orange). Hides entirely while any operation is active; Escape restores. Only active when `NODE_ENV=development`.
+**FAB:** Fixed bottom-right. Hover reveals three circles (left→right): **↩ Undo** (grey/red), **[] Screenshot** (indigo), **✛ Inspect** (orange). Hides entirely while any operation is active; Escape restores. Only active in dev mode — guard varies by framework (see [reference/wiring.md](reference/wiring.md)).
 
 **Undo stack:** Task IDs stored in `sessionStorage` (`__frontloop_undo_stack__`). Survives page reloads. Button turns red when non-empty, grey when empty.
 
@@ -30,16 +30,17 @@ Browser ──WS──▶ ws-task-server (stdout) ──▶ Claude reads UNDO, r
 
 | Component | File | Role |
 |-----------|------|------|
-| WS + HTTP server | `<repo-root>/ws-task-server.js` | WS 7332, HTTP completion + reload + screenshot on 7333 |
+| WS + HTTP server | `<repo-root>/ws-task-server.<server-ext>` | WS 7332, HTTP completion + reload + screenshot on 7333 |
 | DOM Inspector | `<frontend>/src/mocks/dom-inspector.ts` | FAB, hover highlight, canvas capture, shimmer overlay, WS dispatch |
 | Provider wiring | `<frontend>/src/lib/LiveUIProvider.tsx` | Calls `setupDomInspector()` once in dev mode |
 
 - **`<repo-root>`** — `git rev-parse --show-toplevel`
 - **`<frontend>`** — dir with `src/` + `package.json` with a dev server script
+- **`<server-ext>`** — `.js` if `package.json` has no `"type": "module"`, otherwise `.cjs` (the server uses CommonJS `require()`)
 
 ## Monitoring
 
-The **Monitor tool** spawns a persistent background process. `ws-task-server.js` emits `TASK: {...}` lines to stdout — each line is a real-time notification. **Use Monitor, not Bash** (Bash is ephemeral and can't host a persistent WS server).
+The **Monitor tool** spawns a persistent background process. `ws-task-server.<server-ext>` emits `TASK: {...}` lines to stdout — each line is a real-time notification. **Use Monitor, not Bash** (Bash is ephemeral and can't host a persistent WS server).
 
 ## Setup
 
@@ -48,12 +49,12 @@ Claude handles steps 1–5. **Step 6 (dev server) must be started by the user.**
 ### Step 1 — Resolve repo paths
 Identify `<repo-root>` and `<frontend>` using the rules above.
 
-### Step 2 — ws-task-server.js
-Copy [reference/ws-task-server.js](reference/ws-task-server.js) verbatim to `<repo-root>/ws-task-server.js`. Use bash to copy — do not reconstruct from memory. If `package.json` has `"type": "module"`, name it `ws-task-server.cjs` (CommonJS `require()` won't work in an ES module `.js` file). The `ws` module is a transitive dep in `<frontend>/node_modules/ws` — do not install separately.
+### Step 2 — ws-task-server
+Copy [reference/ws-task-server.js](reference/ws-task-server.js) verbatim to `<repo-root>/ws-task-server.<server-ext>`. Use bash to copy — do not reconstruct from memory. Check `package.json` for `"type": "module"` first to resolve `<server-ext>` (`.cjs` if present, `.js` otherwise). The `ws` module is a transitive dep in `<frontend>/node_modules/ws` — do not install separately.
 
 ### Step 3 — Start server with Monitor
 ```sh
-NODE_PATH=<frontend>/node_modules node <repo-root>/ws-task-server.js
+NODE_PATH=<frontend>/node_modules node <repo-root>/ws-task-server.<server-ext>
 ```
 Verify: `lsof -i :7332 | grep LISTEN && lsof -i :7333 | grep LISTEN`. Expect `ws-task-server: WS on 7332, HTTP on 7333`.
 
@@ -63,26 +64,9 @@ Copy [reference/dom-inspector.ts](reference/dom-inspector.ts) verbatim to `<fron
 `setupDomInspector()` is idempotent — returns `null` if already initialised.
 
 ### Step 5 — Provider wiring
-Call `setupDomInspector()` **exactly once** after the DOM is ready, guarded by a dev-mode check. See [reference/wiring.md](reference/wiring.md) for all framework templates.
+Call `setupDomInspector()` **exactly once** after the DOM is ready, guarded by a dev-mode check. See [reference/wiring.md](reference/wiring.md) for all framework templates (Vite, CRA/CRACO, Next.js, Angular, Vanilla JS/TS).
 
-**React (CRA / CRACO) — most common:**
-```tsx
-// src/lib/LiveUIProvider.tsx
-import React, { useEffect } from 'react';
-
-export default function LiveUIProvider({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    if (process.env.NODE_ENV !== 'development') return;
-    import('../mocks/dom-inspector').then(({ setupDomInspector }) => {
-      setupDomInspector();
-    });
-  }, []);
-  return <>{children}</>;
-}
-```
-Wire in `App.tsx` wrapping `<Router>` children. **Do not also call `setupDomInspector()` from the entry file** — that creates two FAB instances.
-
-For Next.js, Vue, Angular, or Vanilla JS/TS: see [reference/wiring.md](reference/wiring.md).
+**Do not also call `setupDomInspector()` from the entry file** — that creates two FAB instances.
 
 ### Step 6 — User starts dev server
 **Claude must NOT start the dev server.** Instruct the user:
