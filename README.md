@@ -36,9 +36,9 @@
 
 ### `/live-ui-generation`
 
-Click any element on your running app. Describe the change. Claude Code receives the full DOM context — selector, outer HTML, computed styles, container context, and page URL — edits the source file directly, and hot reload delivers the result.
+Click any element on your running app. Describe the change. The coding agent receives the full DOM context — selector, outer HTML, computed styles, container context, and page URL — edits the source file directly, and hot reload delivers the result. Made a mistake? Hit Undo and the agent reverts it.
 
-An orange shimmer appears over the selected element while Claude works and clears on completion.
+A shimmer appears over the selected element while the agent works and clears on completion.
 
 ![side-by-side](./side-by-side.png)
 ![demo](./demo.png)
@@ -69,12 +69,13 @@ Not a CSS override. A real source edit with full codebase context.
 **How it works:**
 
 - A floating button (FAB) appears in your browser in dev mode
-- On-hover it reveals two input mode - Dom element selector and screenshot selector
-- In Dom element selector mode, select an element, type your fix — a loader appears
-- In screenshot selector mode, draw a box around the area you want to change, describe the change — a loader appears
-- A WebSocket server streams the task payload to Claude as a real-time notification
-- Claude edits the source file, runs a type check, then sends a completion signal
-- Loader clears, HMR delivers the change. If HMR can potentially not work, a reload signal is sent instead.
+- Hover to reveal three modes: **✛ Inspect**, **[] Screenshot**, **↩ Undo**
+- In Inspect mode, click an element and describe the fix — an orange shimmer appears while the agent works
+- In Screenshot mode, drag a box around the area you want to change and describe the fix — an indigo shimmer appears
+- In Undo mode, the agent reverts the last change and reloads the page
+- A WebSocket server streams the task payload to the coding agent as a real-time notification
+- The agent edits the source file, runs a type check, then sends a completion signal
+- Shimmer clears, HMR delivers the change. If HMR may not apply, a reload signal is sent instead.
 
 **Framework support:** 
 - ✅ React
@@ -104,9 +105,6 @@ Not a CSS override. A real source edit with full codebase context.
 ---
 
 ## Roadmap
-
-### 🚧 Undo support *(in development)*
-Implementing undo functionality for UI changes made through the `live-ui-generation` skill. This will allow users to easily revert changes if the result is not as expected, providing a safety net and encouraging experimentation.
 
 ### 🚧 `mock-setup` *(in development)*
 A complete mock backend layer using Mock Service Worker. The agent reads your existing API calls, generates stateful MSW handlers, wires up working auth without touching production code, and verifies every route renders correctly.
