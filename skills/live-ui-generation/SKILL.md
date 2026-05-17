@@ -9,7 +9,7 @@ description: Enables live UI generation by click-inspecting DOM elements or capt
 
 Closes the loop between browser and Claude via three modes:
 
-- **Element inspect:** Hover ⋞ FAB → click ✛ Inspect → select element → describe fix. Orange shimmer appears, TASK payload arrives in the shell.
+- **Element inspect:** Hover ⋞ FAB → transforms to ✛ Inspect → click element → describe fix. Orange shimmer appears, TASK payload arrives in the shell.
 - **Screenshot capture:** Hover ⋞ FAB → click [] Screenshot → drag to select region → describe fix. TASK payload includes `screenshotPath`.
 - **Undo:** Hover ⋞ FAB → click ↩ Undo (red when history exists). Sends UNDO task; Claude reverts last change and reloads.
 
@@ -22,7 +22,9 @@ Browser ──WS──▶ ws-task-server (stdout) ──▶ Claude reads UNDO, r
   (fire-and-forget — no COMPLETE response)
 ```
 
-**FAB:** Fixed bottom-right. Hover reveals three circles (left→right): **↩ Undo** (grey/red), **[] Screenshot** (indigo), **✛ Inspect** (orange). Hides entirely while any operation is active; Escape restores. Only active in dev mode — guard varies by framework (see [reference/wiring.md](reference/wiring.md)).
+**FAB:** Fixed bottom-right. Hover transforms the FAB from ⋞ to ✛ (Inspect), reveals two dial items: **↩ Undo** (grey/red) and **[] Screenshot** (indigo), plus an **"Inspect" label** next to the FAB. Hides entirely while any operation is active; Escape restores. Only active in dev mode — guard varies by framework (see [reference/wiring.md](reference/wiring.md)). **Clicking the FAB itself starts inspect mode** — the click is never wasted.
+
+**Console error capture:** Both the inspect and screenshot prompt panels include a "Send console errors" checkbox. When checked, captured `console.error` calls are included in the TASK payload. A live `[N errors]` counter appears next to the checkbox.
 
 **Undo stack:** Task IDs stored in `sessionStorage` (`__frontloop_undo_stack__`). Survives page reloads. Button turns red when non-empty, grey when empty.
 
@@ -31,8 +33,9 @@ Browser ──WS──▶ ws-task-server (stdout) ──▶ Claude reads UNDO, r
 | Component | File | Role |
 |-----------|------|------|
 | WS + HTTP server | `<repo-root>/ws-task-server.<server-ext>` | WS 7332, HTTP completion + reload + screenshot on 7333 |
-| DOM Inspector | `<frontend>/src/mocks/dom-inspector.ts` | FAB, hover highlight, canvas capture, shimmer overlay, WS dispatch |
-| Provider wiring | `<frontend>/src/lib/LiveUIProvider.tsx` | Calls `setupDomInspector()` once in dev mode |
+| DOM Inspector | `<frontend>/src/mocks/dom-inspector.ts` | FAB, hover highlight, canvas capture, shimmer overlay, WS dispatch, console error section UI |
+| Console error capture | `<frontend>/src/mocks/capture-console-errors.ts` | Patches `console.error` at module load time, provides shared error buffer |
+| Provider wiring | `<frontend>/src/lib/LiveUIProvider.tsx` | Eagerly imports `capture-console-errors`, calls `setupDomInspector()` once in dev mode |
 
 - **`<repo-root>`** — `git rev-parse --show-toplevel`
 - **`<frontend>`** — dir with `src/` + `package.json` with a dev server script
@@ -63,10 +66,23 @@ Copy [reference/dom-inspector.ts](reference/dom-inspector.ts) verbatim to `<fron
 
 `setupDomInspector()` is idempotent — returns `null` if already initialised.
 
+### Step 4.5 — capture-console-errors.ts
+Copy [reference/capture-console-errors.ts](reference/capture-console-errors.ts) verbatim to `<frontend>/src/mocks/capture-console-errors.ts`. Use bash to copy — do not reconstruct from memory.
+
+This file patches `console.error` at module load time and provides the shared error buffer used by the DOM inspector panels. It must be eagerly imported before React renders.
+
 ### Step 5 — Provider wiring
 Call `setupDomInspector()` **exactly once** after the DOM is ready, guarded by a dev-mode check. See [reference/wiring.md](reference/wiring.md) for all framework templates (Vite, CRA/CRACO, Next.js, Angular, Vanilla JS/TS).
 
 **Do not also call `setupDomInspector()` from the entry file** — that creates two FAB instances.
+
+**Important — console error capture:** The provider must also **eagerly import `capture-console-errors`** at module level so the `console.error` patch runs before React renders. Add at the top of the provider file:
+
+```ts
+import "../mocks/capture-console-errors";
+```
+
+This is already included in the Vite template in [reference/wiring.md](reference/wiring.md). For other frameworks, add the same line.
 
 ### Step 6 — User starts dev server
 **Claude must NOT start the dev server.** Instruct the user:
@@ -83,18 +99,19 @@ Call `setupDomInspector()` **exactly once** after the DOM is ready, guarded by a
 ## Usage Flow
 
 ### Phase A — Element inspect
-1. User hovers ⋞ FAB → three labelled circles slide out to the left
-2. User clicks ✛ Inspect → FAB hides, crosshair cursor, elements highlight orange on hover
+1. User hovers ⋞ FAB → transforms to ✛ Inspect, two dial items (Undo, Screenshot) slide out to the left
+2. User clicks ✛ FAB (or Inspect label) → FAB hides, crosshair cursor, elements highlight orange on hover
 3. User clicks element → highlight pinned, prompt panel appears (bottom-right)
-4. User describes fix, presses Enter / clicks "Send Fix Task" — or Escape to cancel
-5. Orange shimmer over element, browser sends `TASK` via WebSocket
+4. User describes fix, optionally checks **"Send console errors"** — two radio options appear: **Minimal** (default, messages only) / **Detailed** (full stack traces). A live `[N errors]` counter shows how many errors are captured.
+5. User presses Enter / clicks "Send Fix Task" — or Escape to cancel
+6. Orange shimmer over element, browser sends `TASK` via WebSocket with `consoleErrors` payload if enabled
 
 ### Phase A2 — Screenshot capture
 1. User hovers ⋞ FAB → clicks [] Screenshot → FAB hides, crosshair cursor
 2. User drags → dashed indigo selection rectangle
 3. User releases → best enclosing container found, screenshot captured as PNG
-4. Panel opens with thumbnail preview, selector, textarea
-5. User sends → PNG saved to `/tmp/liveui-screenshot-<id>.png`. TASK dispatched with `screenshotPath`
+4. Panel opens with thumbnail preview, selector, textarea, and same **"Send console errors"** checkbox + radios
+5. User sends → PNG saved to `/tmp/liveui-screenshot-<id>.png`. TASK dispatched with `screenshotPath` and optional `consoleErrors`
 6. Indigo shimmer over region
 
 ### Phase A3 — Undo
@@ -109,6 +126,11 @@ Check `type` field:
 - **`"undo"`** → Phase D (`targetTaskId` identifies the fix to revert)
 
 If `screenshotPath` present, `Read` the image file before planning.
+
+If `consoleErrors` present (full payload in stderr, slim summary in stdout), review the errors before applying a fix — they may explain the problem the user is reporting (e.g. React deprecation warnings causing blank UI areas). The `consoleErrors` field has:
+- `mode`: `"minimal"` (messages only) or `"detailed"` (full stack traces)
+- `errors`: array of `{ message, stack, timestamp }` objects (full errors only in stderr)
+- Slim stdout summary: `count` (number of errors)
 
 ### Phase C — Apply fix
 1. Identify source file from payload: `page` + `pageTitle` for route, `element.componentHierarchy` for React component, `container.title` for card identity
@@ -155,6 +177,7 @@ No `POST /complete` for undo — fire-and-forget.
 | `pageTitle` | string | yes | `document.title` |
 | `page` | string | yes | `window.location.href` |
 | `screenshotPath` | string | no | Absolute path to saved PNG. Use `Read` to view. |
+| `consoleErrors` | object | no | Present when user checked "Send console errors". Contains `mode`: `"minimal"` — messages only, or `"detailed"` — full stack traces. `errors`: array of `{message, stack, timestamp}`. Slimmed in stdout to `{mode, count}`; full errors in stderr. |
 
 ### undo
 
@@ -176,6 +199,9 @@ No `POST /complete` for undo — fire-and-forget.
 | Completion returns 404 | WS connection already closed (tab nav/timeout). Shimmer already gone — no action needed |
 | Screenshot upload fails (no `screenshotPath`) | CORS issue — server must set `Access-Control-Allow-Origin: *` and handle `OPTIONS`. Reference file handles this. |
 | `className.toLowerCase is not a function` | SVG `className` is not a string. Guard: `typeof el.className === 'string'` |
+| Console errors not captured | `patchConsoleError()` must run before React renders. Ensure `capture-console-errors.ts` is eagerly imported in `LiveUIProvider.tsx` at module level |
+| Console error count shows 0 | The `console.error` patch runs after the file is imported. If importing lazily (via dynamic `import()`), early errors are missed — use eager import |
+| `value.replace is not a function` | `cssEscape` receives a non-string value. Guard with `typeof value !== "string"` |
 | HMR doesn't reflect change | `POST /reload` forces full page refresh |
 | Duplicate FAB in DOM (`document.querySelectorAll('#__frontloop_speed_dial__').length > 1`) | `setupDomInspector()` called from two places — remove one call |
 | CSS `:hover` dial too wide | Use JS mouseenter/mouseleave (in reference file). CSS `:hover` on flex container includes invisible children in hit area |
@@ -197,3 +223,5 @@ No `POST /complete` for undo — fire-and-forget.
 | Reconstructing reference files from memory | Always bash-copy from `reference/` — hover/hide logic has subtle interactions |
 | Sending `POST /complete` for undo | Undo is fire-and-forget — only send `POST /reload` |
 | `setupDomInspector()` called from both entry file and provider | Two FABs created — call from one place only |
+| Eager import of `capture-console-errors` missing | Console errors during initial render won't be captured. Add `import "../mocks/capture-console-errors"` at the top of the provider file |
+| `console.warn` not captured | By design — only `console.error` is intercepted. If needed, patch `console.warn` similarly in `capture-console-errors.ts` |

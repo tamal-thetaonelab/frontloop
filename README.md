@@ -69,20 +69,23 @@ Not a CSS override. A real source edit with full codebase context.
 **How it works:**
 
 - A floating button (FAB) appears in your browser in dev mode
-- Hover to reveal three modes: **✛ Inspect**, **[] Screenshot**, **↩ Undo**
-- In Inspect mode, click an element and describe the fix — an orange shimmer appears while the agent works
-- In Screenshot mode, drag a box around the area you want to change and describe the fix — an indigo shimmer appears
+- Hover to expand: the FAB transforms to **✛ Inspect** and reveals **[] Screenshot** and **↩ Undo** dial items
+- **Clicking the FAB starts Inspect mode directly** — click an element, describe the fix, orange shimmer appears while the agent works
+- In Screenshot mode, drag a box around any area and describe the fix — an indigo shimmer appears
 - In Undo mode, the agent reverts the last change and reloads the page
+- Both panels include a **"Send console errors"** checkbox — when checked, captured `console.error` calls are included in the task payload so the agent can diagnose issues without asking
 - A WebSocket server streams the task payload to the coding agent as a real-time notification
 - The agent edits the source file, runs a type check, then sends a completion signal
 - Shimmer clears, HMR delivers the change. If HMR may not apply, a reload signal is sent instead.
 
-**Framework support:** 
-- ✅ React
-- ✅ Next.js
+**Framework support:**
+- ✅ React (Vite)
+- ✅ React (CRA / CRACO)
+- ✅ Next.js (App Router)
+- ✅ Vue 3 (Vite)
+- ✅ Svelte / SvelteKit (Vite)
 - ✅ Angular
-- 🚧 Vue 3 / Nuxt
-- 🚧 Svelte / SvelteKit
+- ✅ Vanilla JS/TS
 ---
 
 ## Update
@@ -123,7 +126,7 @@ Planned: Cursor, GitHub Copilot Workspace, Gemini CLI, Windsurf.
 
 ### 🚧 UI platform support
 
-Planned additions: Vue 3 / Nuxt, Svelte / SvelteKit, React Native web (Expo).
+Planned additions: React Native web (Expo), Nuxt, SvelteKit (non-Vite).
 
 ---
 

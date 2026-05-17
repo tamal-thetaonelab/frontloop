@@ -1,10 +1,13 @@
 # Provider wiring — framework templates
 
-## Vite (React / Vue / Svelte) — primary
+## Vite + React — primary
 
 ```tsx
 // src/lib/LiveUIProvider.tsx
 import React, { useEffect } from 'react';
+
+// Eagerly import console error capture so the patch runs before React renders
+import '../mocks/capture-console-errors';
 
 export default function LiveUIProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -19,11 +22,46 @@ export default function LiveUIProvider({ children }: { children: React.ReactNode
 
 Wire in `App.tsx` wrapping `<Router>` children. Use `import.meta.env.DEV` — Vite replaces this at build time.
 
+## Vite + Vue 3
+
+```ts
+// src/plugins/liveUI.ts
+import '../mocks/capture-console-errors';
+
+export default {
+  install() {
+    if (import.meta.env.DEV) {
+      import('../mocks/dom-inspector').then(({ setupDomInspector }) => {
+        setupDomInspector();
+      });
+    }
+  },
+};
+// main.ts: app.use(liveUIPlugin)
+```
+
+## Vite + Svelte
+
+```ts
+// src/lib/liveUI.ts
+import '../mocks/capture-console-errors';
+
+if (import.meta.env.DEV) {
+  import('../mocks/dom-inspector').then(({ setupDomInspector }) => {
+    setupDomInspector();
+  });
+}
+// +layout.svelte: import '$lib/liveUI';
+```
+
 ## React (CRA / CRACO)
 
 ```tsx
 // src/lib/LiveUIProvider.tsx
 import React, { useEffect } from 'react';
+
+// Eagerly import console error capture so the patch runs before React renders
+import '../mocks/capture-console-errors';
 
 export default function LiveUIProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -45,6 +83,9 @@ Wire in `App.tsx` wrapping `<Router>` children. Use relative `../` paths, not `@
 'use client';
 import { useEffect } from 'react';
 
+// Eagerly import console error capture so the patch runs before React renders
+import '@/mocks/capture-console-errors';
+
 export default function LiveUIProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return;
@@ -63,6 +104,7 @@ Wire inside `<body>` in `layout.tsx`.
 ```ts
 // In root AppComponent ngOnInit or APP_INITIALIZER
 if (!environment.production) {
+  import('./mocks/capture-console-errors');
   import('./mocks/dom-inspector').then(({ setupDomInspector }) => setupDomInspector());
 }
 ```
@@ -71,6 +113,7 @@ if (!environment.production) {
 
 ```ts
 if (process.env.NODE_ENV === 'development') {
+  import('./mocks/capture-console-errors');
   import('./mocks/dom-inspector').then(({ setupDomInspector }) => setupDomInspector());
 }
 ```
