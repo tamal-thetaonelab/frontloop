@@ -74,7 +74,13 @@ Other visual editing tools give the agent the rendered page. Frontloop gives it 
   },
   "container": { "title": "Employee Card", "dataKeys": ["Name", "Role"] },
   "pageTitle": "Employees — MyApp",
-  "page": "http://localhost:4300/app/employee"
+  "page": "http://localhost:4300/app/employee",
+  "consoleErrors": {
+    "mode": "minimal",
+    "errors": [
+      { "message": "TypeError: Cannot read properties of undefined (reading 'id')", "stack": "", "timestamp": 1747526400000 }
+    ]
+  }
 }
 ```
 
