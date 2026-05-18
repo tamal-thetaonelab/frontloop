@@ -22,6 +22,20 @@
 - **Intuitive**: Faster iterations with real-time feedback enable a more intuitive and efficient workflow. You can see the impact of your changes immediately, make adjustments on the fly, and achieve the desired result in fewer steps.
 - **Agent-agnostic**: The WebSocket server and DOM inspector work with any coding agent that can read from a WebSocket endpoint. Claude Code is supported today. Cursor, Copilot Workspace, Gemini CLI, and Windsurf are planned. Same browser extension, same payload, same workflow.
 
+<br/>
+
+>>> **Best for:** iterating on existing UI — you have running code, a dev server, and want fast visual changes.  
+
+>>> **Not ideal for:** greenfield layout work, pure logic changes, or projects without hot reload.
+     
+## How it compares
+
+- **Cursor's visual editing** — sends a screenshot to the agent. Frontloop sends the component tree, selector, and computed styles. The agent locates the right file directly instead of grepping from a pixel description.
+- **Replit Ghostwriter** — click-to-edit exists but you're inside Replit's cloud IDE. Frontloop works with your local codebase and any agent.
+- **Builder.io / TeleportHQ / Anima** — design-to-code or CMS tools. They generate or manage content; they don't edit live source files in response to agent prompts.
+- **GitHub Copilot** — IDE-first. No browser DOM inspector, no WebSocket live context.
+
+
 ## Install
 
 ### Claude Code
